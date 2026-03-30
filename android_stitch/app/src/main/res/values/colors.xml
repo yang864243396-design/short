@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary palette (Electric Ember) -->
+    <color name="primary">#FFFF3D00</color>
+    <color name="primary_variant">#FFFF5D2E</color>
+    <color name="primary_light">#FFFF8F70</color>
+    <color name="primary_container">#FFFF7852</color>
+    <color name="on_primary">#FF5C1300</color>
+
+    <!-- Surface / Background (Deep Space) -->
+    <color name="background">#FF0E0E0E</color>
+    <color name="surface">#FF0E0E0E</color>
+    <color name="surface_container">#FF1A1A1A</color>
+    <color name="surface_container_high">#FF20201F</color>
+    <color name="surface_container_highest">#FF262626</color>
+    <color name="surface_bright">#FF2C2C2C</color>
+    <color name="surface_variant">#FF262626</color>
+
+    <!-- Text colors -->
+    <color name="on_surface">#FFFFFFFF</color>
+    <color name="on_surface_variant">#FFADAAAA</color>
+    <color name="on_background">#FFFFFFFF</color>
+    <color name="text_hint">#FF767575</color>
+
+    <!-- Accent colors -->
+    <color name="tertiary">#FFE9AAFF</color>
+    <color name="error">#FFFF6E84</color>
+
+    <!-- Outline -->
+    <color name="outline">#FF767575</color>
+    <color name="outline_variant">#FF484847</color>
+
+    <!-- Bottom nav -->
+    <color name="nav_selected">#FFFF3D00</color>
+    <color name="nav_unselected">#FF767575</color>
+
+    <!-- Ranking badge colors -->
+    <color name="rank_gold">#FFFFD700</color>
+    <color name="rank_silver">#FFC0C0C0</color>
+    <color name="rank_bronze">#FFCD7F32</color>
+
+    <!-- Tag badge colors -->
+    <color name="badge_hot">#FFFF3D00</color>
+    <color name="badge_new">#FF4CAF50</color>
+    <color name="badge_rising">#FFFF9800</color>
+
+    <!-- Transparent overlays -->
+    <color name="overlay_dark">#B3000000</color>
+    <color name="overlay_light">#1AFFFFFF</color>
+
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+    <color name="transparent">#00000000</color>
+</resources>

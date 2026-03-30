@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">红果剧场</string>
+    <string name="nav_home">首页</string>
+    <string name="nav_theater">剧场</string>
+    <string name="nav_play">播放</string>
+    <string name="nav_profile">个人中心</string>
+
+    <string name="search_hint">搜索短剧…</string>
+    <string name="must_watch">必看</string>
+    <string name="hot_ranking">今日热播榜</string>
+    <string name="view_full_ranking">查看完整榜单</string>
+    <string name="watch_now">立即观看</string>
+    <string name="heat_suffix">热度</string>
+
+    <string name="episodes_format">共 %d 集</string>
+    <string name="episode_format">第 %d 集</string>
+    <string name="updated_to_format">更新至%d集</string>
+    <string name="completed_format">%d集全</string>
+    <string name="watched_to_format">看到 %02d集</string>
+    <string name="watched_done">已看完</string>
+    <string name="view_episodes">查看选集</string>
+    <string name="view_episodes_format">观看完整短剧·全%d集</string>
+    <string name="player_episodes_format">选集·全%d集·免费观看</string>
+
+    <string name="tab_history">历史</string>
+    <string name="tab_collection">收藏</string>
+    <string name="tab_liked">点赞</string>
+
+    <string name="search_history">搜索历史</string>
+    <string name="hot_search">热搜榜</string>
+    <string name="guess_you_like">猜你喜欢</string>
+    <string name="clear_history">清空</string>
+
+    <string name="ranking_hot">热播榜</string>
+    <string name="ranking_rising">飙升榜</string>
+    <string name="ranking_rating">好评榜</string>
+
+    <string name="comment_hint">说点什么…</string>
+    <string name="send">发送</string>
+    <string name="reply">回复</string>
+    <string name="like">点赞</string>
+    <string name="collect">收藏</string>
+    <string name="share">分享</string>
+
+    <string name="login">登录</string>
+    <string name="register">注册</string>
+    <string name="daily_reward">每日奖励</string>
+    <string name="system_notice">系统通知</string>
+
+    <string name="loading">加载中…</string>
+    <string name="no_data">暂无数据</string>
+    <string name="network_error">网络错误，请重试</string>
+    <string name="load_more">加载更多</string>
+    <string name="no_more">没有更多了</string>
+</resources>

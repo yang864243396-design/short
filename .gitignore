@@ -1,0 +1,48 @@
+# ============ OS / Editor ============
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.log
+
+# ============ admin (Vue / Node) ============
+admin/node_modules/
+admin/dist/
+admin/.env
+admin/.env.local
+admin/.env.*.local
+admin/.vite/
+admin/*.local
+
+# ============ android_stitch ============
+android_stitch/.gradle/
+android_stitch/**/build/
+android_stitch/local.properties
+android_stitch/.idea/
+android_stitch/*.iml
+android_stitch/captures/
+android_stitch/.cxx/
+android_stitch/*.apk
+android_stitch/*.aab
+
+# ============ backend (Go) ============
+backend/*.exe
+backend/*.exe~
+backend/*.dll
+backend/*.so
+backend/*.dylib
+backend/__debug_bin*
+backend/vendor/
+backend/.env
+backend/.env.local
+backend/tmp/
+backend/storage/
+backend/uploads/
+*.test
+*.out
+
+# ============ Secrets ============
+*.pem
+*.key

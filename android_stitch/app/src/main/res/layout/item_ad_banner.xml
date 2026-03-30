@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingHorizontal="4dp">
+
+    <ImageView
+        android:id="@+id/banner_ad_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_card"
+        android:scaleType="centerCrop"
+        android:contentDescription="ad banner" />
+
+    <!-- Gradient overlay at bottom for text readability -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_banner_gradient" />
+
+    <!-- AD tag -->
+    <TextView
+        android:id="@+id/banner_ad_tag"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="8dp"
+        android:background="@drawable/bg_tag"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:text="广告"
+        android:textColor="@color/primary_light"
+        android:textSize="10sp"
+        android:visibility="gone" />
+
+    <!-- Title at bottom -->
+    <TextView
+        android:id="@+id/banner_ad_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+</FrameLayout>
