@@ -19,9 +19,6 @@ public class Episode {
     @SerializedName("video_url")
     private String videoUrl;
 
-    @SerializedName("duration")
-    private int duration;
-
     @SerializedName("is_free")
     private boolean isFree;
 
@@ -33,6 +30,9 @@ public class Episode {
 
     @SerializedName("view_count")
     private long viewCount;
+
+    @SerializedName("stream_url")
+    private String streamUrl;
 
     // For feed items
     @SerializedName("drama")
@@ -53,14 +53,17 @@ public class Episode {
     public String getVideoUrl() { return videoUrl; }
     public void setVideoUrl(String videoUrl) { this.videoUrl = videoUrl; }
 
-    public int getDuration() { return duration; }
     public boolean isFree() { return isFree; }
 
     public long getLikeCount() { return likeCount; }
     public void setLikeCount(long likeCount) { this.likeCount = likeCount; }
 
     public long getCommentCount() { return commentCount; }
+    public void setCommentCount(long commentCount) { this.commentCount = commentCount; }
     public long getViewCount() { return viewCount; }
+
+    public String getStreamUrl() { return streamUrl; }
+    public void setStreamUrl(String streamUrl) { this.streamUrl = streamUrl; }
 
     public Drama getDrama() { return drama; }
     public void setDrama(Drama drama) { this.drama = drama; }

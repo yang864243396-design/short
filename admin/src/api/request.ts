@@ -15,21 +15,35 @@ request.interceptors.request.use((config) => {
   return config
 })
 
+function handleUnauthorized() {
+  localStorage.removeItem('admin_token')
+  localStorage.removeItem('admin_user')
+  localStorage.removeItem('admin_permissions')
+  if (router.currentRoute.value.path !== '/login') {
+    ElMessage.warning('登录已失效，请重新登录')
+    router.replace('/login')
+  }
+}
+
 request.interceptors.response.use(
   (response) => {
     const res = response.data
     if (res.code !== 200) {
-      ElMessage.error(res.message || '请求失败')
       if (res.code === 401) {
-        localStorage.removeItem('admin_token')
-        router.push('/login')
+        handleUnauthorized()
+      } else {
+        ElMessage.error(res.message || '请求失败')
       }
       return Promise.reject(new Error(res.message))
     }
     return res
   },
   (error) => {
-    ElMessage.error(error.message || '网络错误')
+    if (error.response && error.response.status === 401) {
+      handleUnauthorized()
+    } else {
+      ElMessage.error(error.message || '网络错误')
+    }
     return Promise.reject(error)
   }
 )

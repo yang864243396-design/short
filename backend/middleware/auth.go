@@ -92,17 +92,23 @@ func AdminAuth() gin.HandlerFunc {
 		}
 
 		userID := uint(claims["user_id"].(float64))
+		var roleID uint
+		if rid, ok := claims["role_id"].(float64); ok {
+			roleID = uint(rid)
+		}
 		c.Set("user_id", userID)
 		c.Set("role", role)
+		c.Set("role_id", roleID)
 		c.Next()
 	}
 }
 
-func GenerateAdminToken(userID uint) (string, error) {
+func GenerateAdminToken(userID uint, roleID uint) (string, error) {
 	cfg := config.Load()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
 		"role":    "admin",
+		"role_id": roleID,
 		"exp":     time.Now().Add(time.Duration(cfg.JWT.Expire) * time.Hour).Unix(),
 		"iat":     time.Now().Unix(),
 	})

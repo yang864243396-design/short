@@ -11,7 +11,6 @@
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="nickname" label="昵称" width="120" />
         <el-table-column prop="coins" label="金币" width="80" />
-        <el-table-column prop="role" label="角色" width="80" />
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
@@ -34,7 +33,7 @@
       <el-pagination
         style="margin-top:16px;justify-content:flex-end"
         layout="total, prev, pager, next"
-        :total="total" :page-size="20"
+        :total="total" :page-size="10"
         v-model:current-page="page" @current-change="loadData"
       />
     </el-card>
@@ -55,7 +54,7 @@ const loading = ref(false)
 async function loadData() {
   loading.value = true
   try {
-    const res: any = await getUsers({ page: page.value, page_size: 20, keyword: keyword.value })
+    const res: any = await getUsers({ page: page.value, page_size: 10, keyword: keyword.value })
     list.value = res.data.list || []
     total.value = res.data.total || 0
   } catch (e) {} finally { loading.value = false }

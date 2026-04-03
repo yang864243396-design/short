@@ -86,9 +86,8 @@ func computeHotRanking() {
 	database.DB.Raw(`
 		SELECT d.*
 		FROM dramas d
-		LEFT JOIN drama_stats s ON s.drama_id = d.id
-		WHERE d.created_at >= ?
-		ORDER BY COALESCE(s.total_views, 0) DESC, d.heat DESC
+		WHERE d.created_at >= ? AND d.enabled = 1
+		ORDER BY d.heat DESC
 		LIMIT 30
 	`, oneMonthAgo).Scan(&dramas)
 
@@ -117,7 +116,7 @@ func computeRisingRanking() {
 		SELECT d.*
 		FROM dramas d
 		LEFT JOIN drama_stats s ON s.drama_id = d.id
-		WHERE d.created_at >= ?
+		WHERE d.created_at >= ? AND d.enabled = 1
 		ORDER BY COALESCE(s.rising_score, 0) DESC, d.heat DESC
 		LIMIT 30
 	`, oneMonthAgo).Scan(&dramas)
@@ -135,7 +134,7 @@ func computeRatingRanking() {
 		SELECT d.*
 		FROM dramas d
 		LEFT JOIN drama_stats s ON s.drama_id = d.id
-		WHERE d.created_at >= ?
+		WHERE d.created_at >= ? AND d.enabled = 1
 		ORDER BY COALESCE(s.avg_rating, d.rating) DESC, d.rating DESC
 		LIMIT 30
 	`, oneMonthAgo).Scan(&dramas)
@@ -148,6 +147,12 @@ func computeRatingRanking() {
 func dramasToRankList(dramas []models.Drama) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(dramas))
 	for i, d := range dramas {
+		var totalLikes int64
+		var stats models.DramaStats
+		if database.DB.Where("drama_id = ?", d.ID).First(&stats).Error == nil {
+			totalLikes = stats.TotalLikes
+		}
+
 		result = append(result, map[string]interface{}{
 			"rank": i + 1,
 			"drama": map[string]interface{}{
@@ -162,7 +167,8 @@ func dramasToRankList(dramas []models.Drama) []map[string]interface{} {
 				"heat":           d.Heat,
 				"status":         d.Status,
 			},
-			"heat": d.Heat,
+			"heat":        d.Heat,
+			"total_likes": totalLikes,
 		})
 	}
 	return result

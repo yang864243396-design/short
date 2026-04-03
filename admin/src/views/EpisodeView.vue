@@ -12,7 +12,6 @@
         <el-table-column prop="drama_id" label="剧集ID" width="80" />
         <el-table-column prop="episode_number" label="集数" width="70" />
         <el-table-column prop="title" label="标题" min-width="200" />
-        <el-table-column prop="duration" label="时长(秒)" width="90" />
         <el-table-column prop="is_free" label="免费" width="70">
           <template #default="{ row }">
             <el-tag :type="row.is_free ? 'success' : 'info'" size="small">{{ row.is_free ? '是' : '否' }}</el-tag>
@@ -52,7 +51,6 @@
         <el-form-item label="剧集ID"><el-input-number v-model="form.drama_id" :min="1" /></el-form-item>
         <el-form-item label="集数"><el-input-number v-model="form.episode_number" :min="1" /></el-form-item>
         <el-form-item label="标题"><el-input v-model="form.title" /></el-form-item>
-        <el-form-item label="时长(秒)"><el-input-number v-model="form.duration" :min="0" /></el-form-item>
         <el-form-item label="免费"><el-switch v-model="form.is_free" /></el-form-item>
       </el-form>
       <template #footer>
@@ -72,13 +70,13 @@ const token = localStorage.getItem('admin_token') || ''
 const list = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = 50
+const pageSize = 10
 const dramaId = ref('')
 const loading = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 
-const form = reactive({ drama_id: 0, episode_number: 1, title: '', duration: 600, is_free: true })
+const form = reactive({ drama_id: 0, episode_number: 1, title: '', is_free: true })
 
 function showDialog(row?: any) {
   if (row) {
@@ -86,7 +84,7 @@ function showDialog(row?: any) {
     Object.assign(form, row)
   } else {
     editingId.value = null
-    Object.assign(form, { drama_id: Number(dramaId.value) || 0, episode_number: 1, title: '', duration: 600, is_free: true })
+    Object.assign(form, { drama_id: Number(dramaId.value) || 0, episode_number: 1, title: '', is_free: true })
   }
   dialogVisible.value = true
 }
@@ -119,8 +117,10 @@ async function handleDelete(id: number) {
 
 function onVideoUploaded(row: any, res: any) {
   if (res.code === 200) {
-    updateEpisode(row.id, { ...row, video_path: res.data.path })
-    ElMessage.success('视频上传成功')
+    updateEpisode(row.id, { ...row, video_path: res.data.path }).then(() => {
+      ElMessage.success('视频上传成功')
+      loadData()
+    })
   }
 }
 

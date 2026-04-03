@@ -19,7 +19,7 @@
       <el-pagination
         style="margin-top:16px;justify-content:flex-end"
         layout="total, prev, pager, next"
-        :total="total" :page-size="20"
+        :total="total" :page-size="10"
         v-model:current-page="page" @current-change="loadData"
       />
     </el-card>
@@ -39,7 +39,7 @@ const loading = ref(false)
 async function loadData() {
   loading.value = true
   try {
-    const res: any = await getComments({ page: page.value, page_size: 20 })
+    const res: any = await getComments({ page: page.value, page_size: 10 })
     list.value = res.data.list || []
     total.value = res.data.total || 0
   } catch (e) {} finally { loading.value = false }

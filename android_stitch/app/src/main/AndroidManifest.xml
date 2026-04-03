@@ -37,5 +37,10 @@
             android:name=".ui.ranking.RankingActivity"
             android:screenOrientation="portrait" />
 
+        <activity
+            android:name=".ui.auth.LoginActivity"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+
     </application>
 </manifest>

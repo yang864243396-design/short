@@ -21,10 +21,10 @@ func GetHomePage(c *gin.Context) {
 	database.DB.Order("sort ASC").Find(&categories)
 
 	var mustWatch []models.Drama
-	database.DB.Where("rating >= ?", 9.0).Order("heat DESC").Limit(10).Find(&mustWatch)
+	database.DB.Where("rating >= ? AND enabled = ?", 9.0, true).Order("heat DESC").Limit(10).Find(&mustWatch)
 
 	var recommend []models.Drama
-	database.DB.Order("updated_at DESC").Limit(10).Find(&recommend)
+	database.DB.Where("enabled = ?", true).Order("updated_at DESC").Limit(10).Find(&recommend)
 
 	hotRanking := GetHomeHotRankingFromCache(10)
 

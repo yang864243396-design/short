@@ -30,9 +30,24 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="上架" width="70">
           <template #default="{ row }">
+            <el-tag :type="row.enabled !== false ? 'success' : 'danger'" size="small">
+              {{ row.enabled !== false ? '正常' : '关闭' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="280" fixed="right">
+          <template #default="{ row }">
+            <el-button type="success" text size="small" @click="openEpisodeDrawer(row)">管理分集</el-button>
             <el-button type="primary" text size="small" @click="showDialog(row)">编辑</el-button>
+            <el-button
+              :type="row.enabled !== false ? 'warning' : 'success'"
+              text size="small"
+              @click="toggleEnabled(row)"
+            >
+              {{ row.enabled !== false ? '关闭' : '启用' }}
+            </el-button>
             <el-popconfirm title="确定删除？" @confirm="handleDelete(row.id)">
               <template #reference><el-button type="danger" text size="small">删除</el-button></template>
             </el-popconfirm>
@@ -50,6 +65,7 @@
       />
     </el-card>
 
+    <!-- Drama edit dialog -->
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑剧集' : '新增剧集'" width="600px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="标题"><el-input v-model="form.title" /></el-form-item>
@@ -104,25 +120,93 @@
         <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- Episode management drawer -->
+    <el-drawer v-model="epDrawerVisible" :title="epDrawerTitle" size="680px" direction="rtl">
+      <div style="padding:0 4px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+          <span style="font-size:13px;color:#999">共 {{ epTotal }} 集</span>
+          <el-button type="primary" size="small" @click="showEpDialog()">新增分集</el-button>
+        </div>
+        <el-table :data="epList" v-loading="epLoading" stripe size="small">
+          <el-table-column prop="episode_number" label="集数" width="60" />
+          <el-table-column prop="title" label="标题" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="is_free" label="免费" width="60">
+            <template #default="{ row }">
+              <el-tag :type="row.is_free ? 'success' : 'info'" size="small">{{ row.is_free ? '是' : '否' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="视频" width="70">
+            <template #default="{ row }">
+              <el-tag :type="row.video_path ? 'success' : 'danger'" size="small">{{ row.video_path ? '已上传' : '未上传' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200">
+            <template #default="{ row }">
+              <el-button type="primary" text size="small" @click="showEpDialog(row)">编辑</el-button>
+              <el-upload
+                :action="'/api/v1/admin/upload/video'"
+                :headers="uploadHeaders"
+                :show-file-list="false"
+                :on-success="(res: any) => onVideoUploaded(row, res)"
+                accept="video/*"
+                style="display:inline-block"
+              >
+                <el-button type="warning" text size="small">上传视频</el-button>
+              </el-upload>
+              <el-popconfirm title="确定删除？" @confirm="handleEpDelete(row.id)">
+                <template #reference><el-button type="danger" text size="small">删除</el-button></template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-pagination
+          v-if="epTotal > epPageSize"
+          style="margin-top:12px;justify-content:flex-end"
+          layout="total, prev, pager, next"
+          :total="epTotal"
+          :page-size="epPageSize"
+          v-model:current-page="epPage"
+          @current-change="loadEpisodes"
+          small
+        />
+      </div>
+    </el-drawer>
+
+    <!-- Episode edit dialog -->
+    <el-dialog v-model="epDialogVisible" :title="epEditingId ? '编辑分集' : '新增分集'" width="500px" append-to-body>
+      <el-form :model="epForm" label-width="80px">
+        <el-form-item label="集数"><el-input-number v-model="epForm.episode_number" :min="1" /></el-form-item>
+        <el-form-item label="标题"><el-input v-model="epForm.title" /></el-form-item>
+        <el-form-item label="免费"><el-switch v-model="epForm.is_free" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="epDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="epSaving" @click="handleEpSave">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getDramas, createDrama, updateDrama, deleteDrama, getCategories } from '@/api'
+import {
+  getDramas, createDrama, updateDrama, deleteDrama, getCategories,
+  getEpisodes, createEpisode, updateEpisode, deleteEpisode
+} from '@/api'
 
+// ===== Drama list =====
 const categoryList = ref<any[]>([])
 const list = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = 20
+const pageSize = 10
 const keyword = ref('')
 const loading = ref(false)
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
-
 const selectedCategories = ref<string[]>([])
 const uploadHeaders = computed(() => ({
   Authorization: 'Bearer ' + (localStorage.getItem('admin_token') || '')
@@ -184,6 +268,13 @@ async function handleSave() {
   } catch (e) {} finally { saving.value = false }
 }
 
+async function toggleEnabled(row: any) {
+  const newEnabled = row.enabled === false
+  await updateDrama(row.id, { ...row, enabled: newEnabled })
+  ElMessage.success(newEnabled ? '已启用' : '已关闭')
+  loadData()
+}
+
 async function handleDelete(id: number) {
   await deleteDrama(id)
   ElMessage.success('删除成功')
@@ -192,9 +283,85 @@ async function handleDelete(id: number) {
 
 async function loadCategories() {
   try {
-    const res: any = await getCategories()
-    categoryList.value = res.data || []
+    const res: any = await getCategories({ page: 1, page_size: 100 })
+    categoryList.value = res.data?.list || res.data || []
   } catch (e) {}
+}
+
+// ===== Episode drawer =====
+const epDrawerVisible = ref(false)
+const epDrawerTitle = ref('')
+const currentDramaId = ref(0)
+const epList = ref<any[]>([])
+const epTotal = ref(0)
+const epPage = ref(1)
+const epPageSize = 10
+const epLoading = ref(false)
+
+const epDialogVisible = ref(false)
+const epEditingId = ref<number | null>(null)
+const epSaving = ref(false)
+const epForm = reactive({ drama_id: 0, episode_number: 1, title: '', is_free: true })
+
+function openEpisodeDrawer(drama: any) {
+  currentDramaId.value = drama.id
+  epDrawerTitle.value = `《${drama.title}》分集管理`
+  epPage.value = 1
+  epDrawerVisible.value = true
+  loadEpisodes()
+}
+
+async function loadEpisodes() {
+  epLoading.value = true
+  try {
+    const res: any = await getEpisodes({ page: epPage.value, page_size: epPageSize, drama_id: currentDramaId.value })
+    epList.value = res.data.list || []
+    epTotal.value = res.data.total || 0
+  } catch (e) {} finally { epLoading.value = false }
+}
+
+function showEpDialog(row?: any) {
+  if (row) {
+    epEditingId.value = row.id
+    Object.assign(epForm, row)
+  } else {
+    epEditingId.value = null
+    const nextNum = epList.value.length > 0 ? Math.max(...epList.value.map((e: any) => e.episode_number)) + 1 : 1
+    Object.assign(epForm, { drama_id: currentDramaId.value, episode_number: nextNum, title: '', is_free: true })
+  }
+  epDialogVisible.value = true
+}
+
+async function handleEpSave() {
+  epForm.drama_id = currentDramaId.value
+  epSaving.value = true
+  try {
+    if (epEditingId.value) {
+      await updateEpisode(epEditingId.value, epForm)
+    } else {
+      await createEpisode(epForm)
+    }
+    ElMessage.success('保存成功')
+    epDialogVisible.value = false
+    loadEpisodes()
+  } catch (e) {} finally { epSaving.value = false }
+}
+
+async function handleEpDelete(id: number) {
+  await deleteEpisode(id)
+  ElMessage.success('删除成功')
+  loadEpisodes()
+}
+
+function onVideoUploaded(row: any, res: any) {
+  if (res.code === 200) {
+    updateEpisode(row.id, { ...row, video_path: res.data.path }).then(() => {
+      ElMessage.success('视频上传成功')
+      loadEpisodes()
+    })
+  } else {
+    ElMessage.error('上传失败')
+  }
 }
 
 onMounted(() => {

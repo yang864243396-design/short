@@ -33,7 +33,8 @@ func Init(cfg config.DBConfig) {
 	err = DB.AutoMigrate(
 		&models.Drama{},
 		&models.Episode{},
-		&models.User{},
+		&models.Admin{},
+		&models.AppUser{},
 		&models.Comment{},
 		&models.Category{},
 		&models.UserLike{},
@@ -49,11 +50,33 @@ func Init(cfg config.DBConfig) {
 		&models.DramaStats{},
 		&models.DailySnapshot{},
 		&models.UserRating{},
+		&models.AdminRole{},
+		&models.AdVideo{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to migrate: %v", err)
 	}
 	fmt.Println("Database migrated successfully")
+
+	cleanDuplicateEpisodes()
+}
+
+func cleanDuplicateEpisodes() {
+	DB.Exec(`
+		DELETE e1 FROM episodes e1
+		INNER JOIN episodes e2
+		ON e1.drama_id = e2.drama_id AND e1.episode_number = e2.episode_number AND e1.id > e2.id
+	`)
+
+	var indexExists int64
+	DB.Raw("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'episodes' AND index_name = 'idx_drama_episode'").Scan(&indexExists)
+	if indexExists == 0 {
+		if err := DB.Exec("CREATE UNIQUE INDEX idx_drama_episode ON episodes(drama_id, episode_number)").Error; err != nil {
+			fmt.Printf("[Warning] Failed to create unique index on episodes: %v\n", err)
+		} else {
+			fmt.Println("Created unique index idx_drama_episode on episodes")
+		}
+	}
 }
 
 func Seed() {
@@ -91,7 +114,6 @@ func Seed() {
 				EpisodeNumber: i,
 				Title:         fmt.Sprintf("%s 第%d集", drama.Title, i),
 				VideoURL:      fmt.Sprintf("https://example.com/videos/%d/%d.mp4", drama.ID, i),
-				Duration:      600 + i*30,
 				IsFree:        i <= 6,
 			}
 			DB.Create(&ep)
@@ -125,17 +147,28 @@ func Seed() {
 }
 
 func seedAdmin() {
+	var superRole models.AdminRole
+	if DB.Where("name = ?", "超级管理员").First(&superRole).RowsAffected == 0 {
+		superRole = models.AdminRole{
+			Name:        "超级管理员",
+			Description: "拥有所有权限",
+			Permissions: models.AllPermissions,
+		}
+		DB.Create(&superRole)
+	}
+
 	var count int64
-	DB.Model(&models.User{}).Where("role = ?", "admin").Count(&count)
+	DB.Model(&models.Admin{}).Count(&count)
 	if count > 0 {
+		DB.Model(&models.Admin{}).Where("role_id = ?", 0).Update("role_id", superRole.ID)
 		return
 	}
 	hash, _ := hashPassword("admin123")
-	admin := models.User{
+	admin := models.Admin{
 		Username:     "admin",
 		Nickname:     "管理员",
 		PasswordHash: hash,
-		Role:         "admin",
+		RoleID:       superRole.ID,
 		Status:       1,
 	}
 	DB.Create(&admin)

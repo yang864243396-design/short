@@ -11,7 +11,7 @@ import (
 
 func GetDramas(c *gin.Context) {
 	var dramas []models.Drama
-	query := database.DB.Model(&models.Drama{})
+	query := database.DB.Model(&models.Drama{}).Where("enabled = ?", true)
 
 	if cat := c.Query("category"); cat != "" && cat != "推荐" {
 		query = query.Where("category = ?", cat)
@@ -36,11 +36,13 @@ func GetDramaDetail(c *gin.Context) {
 
 	cacheKey := "drama:" + id
 	if err := utils.CacheGet(cacheKey, &drama); err == nil {
-		utils.Success(c, drama)
-		return
+		if drama.Enabled {
+			utils.Success(c, drama)
+			return
+		}
 	}
 
-	if err := database.DB.First(&drama, id).Error; err != nil {
+	if err := database.DB.Where("id = ? AND enabled = ?", id, true).First(&drama).Error; err != nil {
 		utils.BadRequest(c, "剧集不存在")
 		return
 	}
@@ -58,14 +60,14 @@ func GetHotDramas(c *gin.Context) {
 		return
 	}
 
-	database.DB.Order("heat DESC").Limit(20).Find(&dramas)
+	database.DB.Where("enabled = ?", true).Order("heat DESC").Limit(20).Find(&dramas)
 	utils.CacheSet(cacheKey, dramas, 5*time.Minute)
 	utils.Success(c, dramas)
 }
 
 func GetRecommendDramas(c *gin.Context) {
 	var dramas []models.Drama
-	database.DB.Order("rating DESC, heat DESC").Limit(10).Find(&dramas)
+	database.DB.Where("enabled = ?", true).Order("rating DESC, heat DESC").Limit(10).Find(&dramas)
 	utils.Success(c, dramas)
 }
 
@@ -86,8 +88,8 @@ func SearchDramas(c *gin.Context) {
 		return
 	}
 	var dramas []models.Drama
-	database.DB.Where("title LIKE ? OR tags LIKE ? OR description LIKE ?",
-		"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%").
+	database.DB.Where("enabled = ? AND (title LIKE ? OR tags LIKE ? OR description LIKE ?)",
+		true, "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%").
 		Order("heat DESC").Limit(20).Find(&dramas)
 	utils.Success(c, dramas)
 }

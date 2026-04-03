@@ -12,38 +12,49 @@ import (
 func GetFeed(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	episodeNumber, _ := strconv.Atoi(c.DefaultQuery("episode_number", "1"))
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 50 {
 		pageSize = 10
 	}
+	if episodeNumber < 1 {
+		episodeNumber = 1
+	}
 	offset := (page - 1) * pageSize
 
-	var episodes []models.Episode
-	database.DB.Preload("Drama").
-		Joins("LEFT JOIN dramas ON dramas.id = episodes.drama_id").
-		Where("episodes.is_free = ?", true).
-		Order("RAND()").
-		Offset(offset).Limit(pageSize).
-		Find(&episodes)
+	var dramas []models.Drama
+	database.DB.Raw(`
+		SELECT * FROM dramas
+		WHERE enabled = 1
+		ORDER BY -LOG(RAND()) / GREATEST(heat, 1)
+		LIMIT ? OFFSET ?
+	`, pageSize, offset).Scan(&dramas)
 
-	type FeedItem struct {
-		models.Episode
-		Drama *models.Drama `json:"drama"`
-	}
+	items := make([]gin.H, 0, len(dramas))
+	for _, drama := range dramas {
+		var ep models.Episode
+		result := database.DB.Where("drama_id = ? AND episode_number = ?", drama.ID, episodeNumber).First(&ep)
+		if result.RowsAffected == 0 {
+			database.DB.Where("drama_id = ?", drama.ID).Order("episode_number ASC").First(&ep)
+			if ep.ID == 0 {
+				continue
+			}
+		}
 
-	items := make([]gin.H, 0, len(episodes))
-	for _, ep := range episodes {
-		var drama models.Drama
-		database.DB.First(&drama, ep.DramaID)
+		streamURL := ""
+		if ep.VideoPath != "" {
+			streamURL = GenerateSignedStreamURL(ep.ID, ep.VideoPath)
+		}
+
 		items = append(items, gin.H{
 			"id":             ep.ID,
 			"drama_id":       ep.DramaID,
 			"episode_number": ep.EpisodeNumber,
 			"title":          ep.Title,
 			"video_url":      ep.VideoURL,
-			"duration":       ep.Duration,
+			"stream_url":     streamURL,
 			"is_free":        ep.IsFree,
 			"like_count":     ep.LikeCount,
 			"comment_count":  ep.CommentCount,

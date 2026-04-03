@@ -19,12 +19,6 @@ public class FormatUtils {
         return String.valueOf(count);
     }
 
-    public static String formatDuration(int seconds) {
-        int min = seconds / 60;
-        int sec = seconds % 60;
-        return String.format(Locale.CHINA, "%02d:%02d", min, sec);
-    }
-
     public static String formatTimeAgo(String isoTime) {
         if (isoTime == null) return "";
         try {

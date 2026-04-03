@@ -5,6 +5,7 @@ import com.hongguo.theater.model.*;
 import java.util.List;
 import java.util.Map;
 
+import okhttp3.MultipartBody;
 import retrofit2.Call;
 import retrofit2.http.*;
 
@@ -62,6 +63,10 @@ public interface ApiService {
     @GET("rankings")
     Call<ApiResponse<List<RankItem>>> getRankings(@Query("type") String type);
 
+    // ============ Ad ============
+    @GET("ad/video")
+    Call<ApiResponse<Map<String, Object>>> getAdVideo();
+
     // ============ Feed ============
     @GET("feed")
     Call<ApiResponse<List<Episode>>> getFeed(
@@ -84,18 +89,31 @@ public interface ApiService {
     @PUT("user/profile")
     Call<ApiResponse<User>> updateProfile(@Body Map<String, String> body);
 
+    @Multipart
+    @POST("user/avatar")
+    Call<ApiResponse<User>> uploadAvatar(@Part MultipartBody.Part file);
+
     @GET("user/history")
     Call<ApiResponse<List<WatchHistory>>> getHistory();
 
     @GET("user/collections")
     Call<ApiResponse<List<Drama>>> getCollections();
 
+    @GET("user/likes")
+    Call<ApiResponse<List<Episode>>> getLikedEpisodes();
+
     // ============ Episode Interactions (Protected) ============
+    @GET("episodes/{id}/interaction")
+    Call<ApiResponse<Map<String, Object>>> getEpisodeInteraction(@Path("id") long episodeId);
+
     @POST("episodes/{id}/like")
-    Call<ApiResponse<Void>> likeEpisode(@Path("id") long episodeId);
+    Call<ApiResponse<Map<String, Object>>> likeEpisode(@Path("id") long episodeId);
 
     @POST("episodes/{id}/collect")
-    Call<ApiResponse<Void>> collectEpisode(@Path("id") long episodeId);
+    Call<ApiResponse<Map<String, Object>>> collectEpisode(@Path("id") long episodeId);
+
+    @POST("episodes/{id}/history")
+    Call<ApiResponse<Void>> recordHistory(@Path("id") long episodeId);
 
     // ============ Comments ============
     @GET("episodes/{id}/comments")
@@ -112,5 +130,5 @@ public interface ApiService {
     );
 
     @POST("comments/{id}/like")
-    Call<ApiResponse<Void>> likeComment(@Path("id") long commentId);
+    Call<ApiResponse<Map<String, Object>>> likeComment(@Path("id") long commentId);
 }

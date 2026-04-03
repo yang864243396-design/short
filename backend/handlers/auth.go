@@ -27,7 +27,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	var existing models.User
+	var existing models.AppUser
 	if database.DB.Where("username = ?", req.Username).First(&existing).RowsAffected > 0 {
 		utils.BadRequest(c, "用户名已存在")
 		return
@@ -44,7 +44,7 @@ func Register(c *gin.Context) {
 		nickname = req.Username
 	}
 
-	user := models.User{
+	user := models.AppUser{
 		Username:     req.Username,
 		Nickname:     nickname,
 		PasswordHash: string(hash),
@@ -68,7 +68,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	var user models.User
+	var user models.AppUser
 	if database.DB.Where("username = ?", req.Username).First(&user).RowsAffected == 0 {
 		utils.BadRequest(c, "用户名或密码错误")
 		return

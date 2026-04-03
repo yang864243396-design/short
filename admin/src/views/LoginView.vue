@@ -39,6 +39,12 @@ async function handleLogin() {
   try {
     const res: any = await login(form)
     localStorage.setItem('admin_token', res.data.token)
+    if (res.data.user) {
+      localStorage.setItem('admin_user', JSON.stringify(res.data.user))
+    }
+    if (res.data.permissions) {
+      localStorage.setItem('admin_permissions', res.data.permissions)
+    }
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (e) {

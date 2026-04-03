@@ -15,6 +15,12 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        style="margin-top:16px;justify-content:flex-end"
+        layout="total, prev, pager, next"
+        :total="total" :page-size="10"
+        v-model:current-page="page" @current-change="loadData"
+      />
     </el-card>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑分类' : '新增分类'" width="400px">
@@ -36,6 +42,8 @@ import { ElMessage } from 'element-plus'
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/api'
 
 const list = ref<any[]>([])
+const total = ref(0)
+const page = ref(1)
 const loading = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
@@ -50,8 +58,9 @@ function showDialog(row?: any) {
 async function loadData() {
   loading.value = true
   try {
-    const res: any = await getCategories()
-    list.value = res.data || []
+    const res: any = await getCategories({ page: page.value, page_size: 10 })
+    list.value = res.data?.list || res.data || []
+    total.value = res.data?.total || 0
   } catch (e) {} finally { loading.value = false }
 }
 

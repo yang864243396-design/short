@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.hongguo.theater.R;
 import com.hongguo.theater.model.Drama;
+import com.hongguo.theater.model.Episode;
 import com.hongguo.theater.model.WatchHistory;
 import com.hongguo.theater.ui.player.PlayerActivity;
 
@@ -41,6 +42,12 @@ public class ProfileListAdapter extends RecyclerView.Adapter<ProfileListAdapter.
         notifyDataSetChanged();
     }
 
+    public void setEpisodeData(List<Episode> data) {
+        items.clear();
+        if (data != null) items.addAll(data);
+        notifyDataSetChanged();
+    }
+
     public void clearData() {
         items.clear();
         notifyDataSetChanged();
@@ -62,9 +69,7 @@ public class ProfileListAdapter extends RecyclerView.Adapter<ProfileListAdapter.
             WatchHistory wh = (WatchHistory) item;
             if (wh.getDrama() != null) {
                 holder.title.setText(wh.getDrama().getTitle());
-                if (wh.getDrama().getCoverUrl() != null) {
-                    Glide.with(context).load(wh.getDrama().getCoverUrl()).centerCrop().into(holder.cover);
-                }
+                loadCover(holder.cover, wh.getDrama().getCoverUrl());
                 dramaId = wh.getDrama().getId();
             }
             holder.subtitle.setText(wh.getProgressText());
@@ -72,10 +77,20 @@ public class ProfileListAdapter extends RecyclerView.Adapter<ProfileListAdapter.
             Drama d = (Drama) item;
             holder.title.setText(d.getTitle());
             holder.subtitle.setText(d.getCategory() + " · " + d.getStatusText());
-            if (d.getCoverUrl() != null) {
-                Glide.with(context).load(d.getCoverUrl()).centerCrop().into(holder.cover);
-            }
+            loadCover(holder.cover, d.getCoverUrl());
             dramaId = d.getId();
+        } else if (item instanceof Episode) {
+            Episode ep = (Episode) item;
+            if (ep.getDrama() != null) {
+                holder.title.setText(ep.getDrama().getTitle());
+                holder.subtitle.setText("第" + ep.getEpisodeNumber() + "集 · " + ep.getLikeCountText() + "赞");
+                loadCover(holder.cover, ep.getDrama().getCoverUrl());
+                dramaId = ep.getDrama().getId();
+            } else {
+                holder.title.setText(ep.getTitle());
+                holder.subtitle.setText("第" + ep.getEpisodeNumber() + "集");
+                dramaId = ep.getDramaId();
+            }
         }
 
         long finalDramaId = dramaId;
@@ -86,6 +101,17 @@ public class ProfileListAdapter extends RecyclerView.Adapter<ProfileListAdapter.
                 context.startActivity(intent);
             }
         });
+    }
+
+    private void loadCover(ImageView iv, String url) {
+        if (url != null && !url.isEmpty()) {
+            Glide.with(context).load(url)
+                    .placeholder(R.drawable.bg_cover_placeholder)
+                    .error(R.drawable.bg_cover_placeholder)
+                    .centerCrop().into(iv);
+        } else {
+            iv.setImageResource(R.drawable.bg_cover_placeholder);
+        }
     }
 
     @Override

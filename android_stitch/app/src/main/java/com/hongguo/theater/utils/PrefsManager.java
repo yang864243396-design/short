@@ -3,12 +3,16 @@ package com.hongguo.theater.utils;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class PrefsManager {
 
     private static final String PREFS_NAME = "hongguo_prefs";
     private static final String KEY_TOKEN = "token";
     private static final String KEY_USER_ID = "user_id";
     private static final String KEY_USERNAME = "username";
+    private static final String KEY_UNLOCKED_PREFIX = "unlocked_episodes_";
 
     private static SharedPreferences prefs;
 
@@ -46,6 +50,27 @@ public class PrefsManager {
     }
 
     public static void logout() {
-        prefs.edit().clear().apply();
+        prefs.edit()
+                .remove(KEY_TOKEN)
+                .remove(KEY_USER_ID)
+                .remove(KEY_USERNAME)
+                .apply();
+    }
+
+    private static String getUnlockedKey() {
+        long uid = getUserId();
+        return KEY_UNLOCKED_PREFIX + uid;
+    }
+
+    public static boolean isEpisodeUnlocked(long episodeId) {
+        Set<String> set = prefs.getStringSet(getUnlockedKey(), null);
+        return set != null && set.contains(String.valueOf(episodeId));
+    }
+
+    public static void unlockEpisode(long episodeId) {
+        String key = getUnlockedKey();
+        Set<String> set = new HashSet<>(prefs.getStringSet(key, new HashSet<>()));
+        set.add(String.valueOf(episodeId));
+        prefs.edit().putStringSet(key, set).apply();
     }
 }

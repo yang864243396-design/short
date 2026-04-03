@@ -13,6 +13,7 @@ type Drama struct {
 	Rating        float32   `json:"rating" gorm:"default:0"`
 	Heat          int64     `json:"heat" gorm:"default:0"`
 	Status        string    `json:"status" gorm:"size:20;default:'ongoing'"`
+	Enabled       bool      `json:"enabled" gorm:"default:true"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }

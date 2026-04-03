@@ -3,26 +3,72 @@ package handlers
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
+	"short-drama-backend/config"
 	"short-drama-backend/database"
 	"short-drama-backend/models"
 	"short-drama-backend/utils"
 )
+
+func optionalUserID(c *gin.Context) uint {
+	header := c.GetHeader("Authorization")
+	if header == "" || !strings.HasPrefix(header, "Bearer ") {
+		return 0
+	}
+	tokenStr := strings.TrimPrefix(header, "Bearer ")
+	cfg := config.Load()
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		return []byte(cfg.JWT.Secret), nil
+	})
+	if err != nil || !token.Valid {
+		return 0
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0
+	}
+	if uid, ok := claims["user_id"].(float64); ok {
+		return uint(uid)
+	}
+	return 0
+}
 
 func GetComments(c *gin.Context) {
 	episodeID := c.Param("id")
 	var comments []models.Comment
 	database.DB.Where("episode_id = ?", episodeID).Order("likes_count DESC, created_at DESC").Limit(50).Find(&comments)
 
+	userID := optionalUserID(c)
+
+	var likedSet map[uint]bool
+	if userID > 0 && len(comments) > 0 {
+		likedSet = make(map[uint]bool)
+		var commentIDs []uint
+		for _, cm := range comments {
+			commentIDs = append(commentIDs, cm.ID)
+		}
+		var likedRecords []models.CommentLike
+		database.DB.Where("user_id = ? AND comment_id IN ?", userID, commentIDs).Find(&likedRecords)
+		for _, lr := range likedRecords {
+			likedSet[lr.CommentID] = true
+		}
+	}
+
 	for i := range comments {
-		var user models.User
+		var user models.AppUser
 		if database.DB.First(&user, comments[i].UserID).RowsAffected > 0 {
 			comments[i].Nickname = user.Nickname
 			comments[i].Avatar = user.Avatar
 		}
 		comments[i].TimeAgo = timeAgo(comments[i].CreatedAt)
+		if likedSet != nil {
+			comments[i].Liked = likedSet[comments[i].ID]
+		}
 	}
 
 	utils.Success(c, comments)
@@ -40,6 +86,12 @@ func PostComment(c *gin.Context) {
 		return
 	}
 
+	var ep models.Episode
+	if database.DB.First(&ep, episodeID).Error != nil {
+		utils.BadRequest(c, "剧集不存在")
+		return
+	}
+
 	comment := models.Comment{
 		UserID:  userID,
 		Content: req.Content,
@@ -47,7 +99,19 @@ func PostComment(c *gin.Context) {
 	fmt.Sscanf(episodeID, "%d", &comment.EpisodeID)
 	database.DB.Create(&comment)
 
-	var user models.User
+	go func() {
+		database.DB.Model(&models.Episode{}).Where("id = ?", ep.ID).
+			UpdateColumn("comment_count", gorm.Expr("comment_count + 1"))
+
+		database.DB.Model(&models.Drama{}).Where("id = ?", ep.DramaID).
+			UpdateColumn("heat", gorm.Expr("heat + 100"))
+
+		database.DB.Exec(
+			"INSERT INTO drama_stats (drama_id, total_comments, updated_at) VALUES (?, 1, NOW()) "+
+				"ON DUPLICATE KEY UPDATE total_comments = total_comments + 1, updated_at = NOW()", ep.DramaID)
+	}()
+
+	var user models.AppUser
 	database.DB.First(&user, userID)
 	comment.Nickname = user.Nickname
 	comment.Avatar = user.Avatar
@@ -65,7 +129,8 @@ func LikeComment(c *gin.Context) {
 
 	if result.RowsAffected > 0 {
 		database.DB.Delete(&existing)
-		database.DB.Model(&models.Comment{}).Where("id = ?", commentID).UpdateColumn("likes_count", gormExpr("likes_count - 1"))
+		database.DB.Model(&models.Comment{}).Where("id = ?", commentID).
+			UpdateColumn("likes_count", gorm.Expr("GREATEST(likes_count - 1, 0)"))
 		utils.Success(c, gin.H{"liked": false})
 		return
 	}
@@ -73,12 +138,9 @@ func LikeComment(c *gin.Context) {
 	like := models.CommentLike{UserID: userID}
 	fmt.Sscanf(commentID, "%d", &like.CommentID)
 	database.DB.Create(&like)
-	database.DB.Model(&models.Comment{}).Where("id = ?", commentID).UpdateColumn("likes_count", gormExpr("likes_count + 1"))
+	database.DB.Model(&models.Comment{}).Where("id = ?", commentID).
+		UpdateColumn("likes_count", gorm.Expr("likes_count + 1"))
 	utils.Success(c, gin.H{"liked": true})
-}
-
-func gormExpr(expr string) interface{} {
-	return database.DB.Raw(expr)
 }
 
 func timeAgo(t time.Time) string {

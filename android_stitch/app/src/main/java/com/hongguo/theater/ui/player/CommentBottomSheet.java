@@ -16,6 +16,7 @@ import com.hongguo.theater.R;
 import com.hongguo.theater.api.ApiClient;
 import com.hongguo.theater.model.ApiResponse;
 import com.hongguo.theater.model.Comment;
+import com.hongguo.theater.utils.LoginHelper;
 
 import java.util.HashMap;
 import java.util.List;
@@ -27,10 +28,19 @@ import retrofit2.Response;
 
 public class CommentBottomSheet extends BottomSheetDialogFragment {
 
+    public interface OnCommentPostedListener {
+        void onCommentPosted();
+    }
+
     private long episodeId;
     private RecyclerView recyclerView;
     private CommentAdapter adapter;
     private EditText editComment;
+    private OnCommentPostedListener commentPostedListener;
+
+    public void setOnCommentPostedListener(OnCommentPostedListener listener) {
+        this.commentPostedListener = listener;
+    }
 
     public static CommentBottomSheet newInstance(long episodeId) {
         CommentBottomSheet sheet = new CommentBottomSheet();
@@ -94,6 +104,7 @@ public class CommentBottomSheet extends BottomSheetDialogFragment {
     }
 
     private void sendComment() {
+        if (!LoginHelper.requireLogin(requireContext())) return;
         String text = editComment.getText().toString().trim();
         if (text.isEmpty()) return;
 
@@ -106,8 +117,13 @@ public class CommentBottomSheet extends BottomSheetDialogFragment {
             public void onResponse(@NonNull Call<ApiResponse<Comment>> call,
                                    @NonNull Response<ApiResponse<Comment>> response) {
                 if (!isAdded()) return;
-                editComment.setText("");
-                loadComments();
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    editComment.setText("");
+                    loadComments();
+                    if (commentPostedListener != null) {
+                        commentPostedListener.onCommentPosted();
+                    }
+                }
             }
             @Override
             public void onFailure(@NonNull Call<ApiResponse<Comment>> call, @NonNull Throwable t) {}

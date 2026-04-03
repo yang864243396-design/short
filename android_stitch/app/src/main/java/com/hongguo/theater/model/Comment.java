@@ -10,7 +10,7 @@ public class Comment {
     @SerializedName("user_id")
     private long userId;
 
-    @SerializedName("username")
+    @SerializedName("nickname")
     private String username;
 
     @SerializedName("avatar")
@@ -19,10 +19,10 @@ public class Comment {
     @SerializedName("content")
     private String content;
 
-    @SerializedName("like_count")
+    @SerializedName("likes_count")
     private int likeCount;
 
-    @SerializedName("is_liked")
+    @SerializedName("liked")
     private boolean isLiked;
 
     @SerializedName("created_at")

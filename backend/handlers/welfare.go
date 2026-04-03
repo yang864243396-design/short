@@ -34,10 +34,10 @@ func DailyCheckin(c *gin.Context) {
 	}
 	database.DB.Create(&checkin)
 
-	database.DB.Model(&models.User{}).Where("id = ?", userID).
+	database.DB.Model(&models.AppUser{}).Where("id = ?", userID).
 		UpdateColumn("coins", database.DB.Raw("coins + ?", coins))
 
-	var user models.User
+	var user models.AppUser
 	database.DB.First(&user, userID)
 
 	utils.Success(c, gin.H{

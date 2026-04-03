@@ -184,7 +184,7 @@ const uploadHeaders = computed(() => ({
 const list = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = 20
+const pageSize = 10
 const loading = ref(false)
 const dialogVisible = ref(false)
 const saving = ref(false)

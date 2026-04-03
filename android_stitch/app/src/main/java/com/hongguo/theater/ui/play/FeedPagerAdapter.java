@@ -17,14 +17,31 @@ import androidx.annotation.OptIn;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import android.graphics.Color;
+import android.graphics.PorterDuff;
+
 import com.hongguo.theater.R;
 import com.hongguo.theater.api.ApiClient;
+import com.hongguo.theater.model.ApiResponse;
+import com.hongguo.theater.model.Comment;
 import com.hongguo.theater.model.Drama;
 import com.hongguo.theater.model.Episode;
+import com.hongguo.theater.ui.player.CommentBottomSheet;
 import com.hongguo.theater.ui.player.PlayerActivity;
+import com.hongguo.theater.utils.LoginHelper;
+import com.hongguo.theater.utils.ExoPlayerCache;
+import com.hongguo.theater.utils.PrefsManager;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.FragmentActivity;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -100,8 +117,12 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
 
         holder.seekBar.setProgress(0);
 
-        String videoUrl = ApiClient.getStreamUrl(episode.getId());
-        ExoPlayer player = new ExoPlayer.Builder(context).build();
+        String videoUrl = ApiClient.getStreamUrl(episode);
+        DefaultMediaSourceFactory sourceFactory = new DefaultMediaSourceFactory(
+                ExoPlayerCache.getDataSourceFactory(context));
+        ExoPlayer player = new ExoPlayer.Builder(context)
+                .setMediaSourceFactory(sourceFactory)
+                .build();
         player.setMediaItem(MediaItem.fromUri(Uri.parse(videoUrl)));
         player.setRepeatMode(ExoPlayer.REPEAT_MODE_ONE);
         player.prepare();
@@ -120,6 +141,94 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
             } else {
                 player.play();
             }
+        });
+
+        holder.btnLike.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
+        holder.btnCollect.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
+
+        if (PrefsManager.isLoggedIn()) {
+            ApiClient.getService().getEpisodeInteraction(episode.getId())
+                    .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
+                        @Override
+                        public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
+                                               @NonNull Response<ApiResponse<Map<String, Object>>> r) {
+                            if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
+                                Map<String, Object> data = r.body().getData();
+                                if (data != null) {
+                                    boolean liked = Boolean.TRUE.equals(data.get("liked"));
+                                    boolean collected = Boolean.TRUE.equals(data.get("collected"));
+                                    holder.btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
+                                    holder.btnCollect.setColorFilter(collected ? Color.parseColor("#FFC107") : Color.WHITE, PorterDuff.Mode.SRC_IN);
+                                }
+                            }
+                        }
+                        @Override
+                        public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {}
+                    });
+        }
+
+        holder.btnLike.setOnClickListener(v -> {
+            if (!LoginHelper.requireLogin(context)) return;
+            ApiClient.getService().likeEpisode(episode.getId())
+                    .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
+                        @Override
+                        public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
+                                               @NonNull Response<ApiResponse<Map<String, Object>>> r) {
+                            if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
+                                Map<String, Object> data = r.body().getData();
+                                boolean liked = data != null && Boolean.TRUE.equals(data.get("liked"));
+                                holder.btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
+                                long count = episode.getLikeCount() + (liked ? 1 : -1);
+                                if (count < 0) count = 0;
+                                episode.setLikeCount(count);
+                                holder.likeCount.setText(episode.getLikeCountText());
+                            }
+                        }
+                        @Override
+                        public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {}
+                    });
+        });
+
+        holder.btnComment.setOnClickListener(v -> {
+            if (!LoginHelper.requireLogin(context)) return;
+            if (context instanceof FragmentActivity) {
+                CommentBottomSheet sheet = CommentBottomSheet.newInstance(episode.getId());
+                sheet.setOnCommentPostedListener(() -> {
+                    episode.setCommentCount(episode.getCommentCount() + 1);
+                    holder.commentCount.setText(episode.getCommentCountText());
+                });
+                sheet.show(((FragmentActivity) context).getSupportFragmentManager(), "comments");
+            }
+        });
+
+        holder.btnCollect.setOnClickListener(v -> {
+            if (!LoginHelper.requireLogin(context)) return;
+            ApiClient.getService().collectEpisode(episode.getId())
+                    .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
+                        @Override
+                        public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
+                                               @NonNull Response<ApiResponse<Map<String, Object>>> r) {
+                            if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
+                                Map<String, Object> data = r.body().getData();
+                                boolean collected = data != null && Boolean.TRUE.equals(data.get("collected"));
+                                holder.btnCollect.setColorFilter(collected ? Color.parseColor("#FFC107") : Color.WHITE, PorterDuff.Mode.SRC_IN);
+                                android.widget.Toast.makeText(context,
+                                        collected ? "已收藏" : "已取消收藏",
+                                        android.widget.Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                        @Override
+                        public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {}
+                    });
+        });
+
+        holder.btnShare.setOnClickListener(v -> {
+            if (!LoginHelper.requireLogin(context)) return;
+            String title = drama != null ? drama.getTitle() : episode.getTitle();
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType("text/plain");
+            shareIntent.putExtra(Intent.EXTRA_TEXT, "推荐你看《" + title + "》");
+            context.startActivity(Intent.createChooser(shareIntent, "分享到"));
         });
     }
 

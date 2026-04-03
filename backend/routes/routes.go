@@ -11,7 +11,8 @@ import (
 func Setup(r *gin.Engine) {
 	r.Use(middleware.CORS())
 
-	r.Static("/uploads", "./uploads")
+	r.Static("/uploads/images", "./uploads/images")
+	r.Static("/uploads/avatars", "./uploads/avatars")
 
 	api := r.Group("/api/v1")
 	{
@@ -34,7 +35,9 @@ func Setup(r *gin.Engine) {
 
 		api.GET("/feed", handlers.GetFeed)
 
-		api.GET("/stream/:episodeId", middleware.RateLimit(60, time.Minute), handlers.StreamVideo)
+		api.GET("/ad/video", handlers.GetAdVideo)
+
+		api.GET("/stream/:episodeId", middleware.RateLimit(300, time.Minute), handlers.StreamVideo)
 
 		auth := api.Group("/auth")
 		{
@@ -49,11 +52,15 @@ func Setup(r *gin.Engine) {
 		{
 			protected.GET("/user/profile", handlers.GetProfile)
 			protected.PUT("/user/profile", handlers.UpdateProfile)
+			protected.POST("/user/avatar", handlers.UploadAvatar)
 			protected.GET("/user/history", handlers.GetHistory)
 			protected.GET("/user/collections", handlers.GetCollections)
+			protected.GET("/user/likes", handlers.GetLikedEpisodes)
 
+			protected.GET("/episodes/:id/interaction", handlers.GetEpisodeInteraction)
 			protected.POST("/episodes/:id/like", handlers.LikeEpisode)
 			protected.POST("/episodes/:id/collect", handlers.CollectEpisode)
+			protected.POST("/episodes/:id/history", handlers.RecordHistory)
 			protected.POST("/episodes/:id/comments", handlers.PostComment)
 			protected.POST("/comments/:id/like", handlers.LikeComment)
 
@@ -87,6 +94,11 @@ func Setup(r *gin.Engine) {
 			adminProtected.GET("/users", handlers.AdminGetUsers)
 			adminProtected.PUT("/users/:id", handlers.AdminUpdateUser)
 
+			adminProtected.GET("/admins", handlers.AdminGetAdmins)
+			adminProtected.POST("/admins", handlers.AdminCreateAdmin)
+			adminProtected.PUT("/admins/:id", handlers.AdminUpdateAdmin)
+			adminProtected.DELETE("/admins/:id", handlers.AdminDeleteAdmin)
+
 			adminProtected.GET("/comments", handlers.AdminGetComments)
 			adminProtected.DELETE("/comments/:id", handlers.AdminDeleteComment)
 
@@ -99,6 +111,16 @@ func Setup(r *gin.Engine) {
 			adminProtected.POST("/banners", handlers.AdminCreateBanner)
 			adminProtected.PUT("/banners/:id", handlers.AdminUpdateBanner)
 			adminProtected.DELETE("/banners/:id", handlers.AdminDeleteBanner)
+
+			adminProtected.GET("/roles", handlers.AdminGetRoles)
+			adminProtected.POST("/roles", handlers.AdminCreateRole)
+			adminProtected.PUT("/roles/:id", handlers.AdminUpdateRole)
+			adminProtected.DELETE("/roles/:id", handlers.AdminDeleteRole)
+
+			adminProtected.GET("/ads", handlers.AdminGetAds)
+			adminProtected.POST("/ads", handlers.AdminCreateAd)
+			adminProtected.PUT("/ads/:id", handlers.AdminUpdateAd)
+			adminProtected.DELETE("/ads/:id", handlers.AdminDeleteAd)
 
 			adminProtected.POST("/upload/video", handlers.UploadVideo)
 			adminProtected.POST("/upload/image", handlers.UploadImage)

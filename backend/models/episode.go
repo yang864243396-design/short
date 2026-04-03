@@ -10,7 +10,6 @@ type Episode struct {
 	VideoURL      string    `json:"video_url" gorm:"size:500"`
 	VideoPath     string    `json:"video_path" gorm:"size:500"`
 	FileSize      int64     `json:"file_size" gorm:"default:0"`
-	Duration      int       `json:"duration" gorm:"default:0"`
 	IsFree        bool      `json:"is_free" gorm:"default:false"`
 	LikeCount     int64     `json:"like_count" gorm:"default:0"`
 	CommentCount  int64     `json:"comment_count" gorm:"default:0"`

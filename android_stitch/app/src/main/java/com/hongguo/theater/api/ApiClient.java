@@ -3,6 +3,7 @@ package com.hongguo.theater.api;
 import android.content.Context;
 
 import com.hongguo.theater.BuildConfig;
+import com.hongguo.theater.model.Episode;
 import com.hongguo.theater.utils.PrefsManager;
 
 import java.util.concurrent.TimeUnit;
@@ -48,5 +49,14 @@ public class ApiClient {
 
     public static String getStreamUrl(long episodeId) {
         return BuildConfig.BASE_URL + "stream/" + episodeId;
+    }
+
+    public static String getStreamUrl(Episode episode) {
+        String signedUrl = episode.getStreamUrl();
+        if (signedUrl != null && !signedUrl.isEmpty()) {
+            String base = BuildConfig.BASE_URL.replace("/api/v1/", "");
+            return signedUrl.startsWith("http") ? signedUrl : base + signedUrl;
+        }
+        return getStreamUrl(episode.getId());
     }
 }

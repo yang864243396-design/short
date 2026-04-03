@@ -1,96 +1,115 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
-	"os"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"short-drama-backend/config"
 	"short-drama-backend/database"
 	"short-drama-backend/models"
 	"short-drama-backend/utils"
 )
 
+func streamSecret() string {
+	return config.Load().JWT.Secret + ":stream"
+}
+
+func normalizePath(p string) string {
+	return strings.ReplaceAll(p, "\\", "/")
+}
+
+func GenerateSignedStreamURL(episodeID uint, videoPath string) string {
+	expire := time.Now().Add(2 * time.Hour).Unix()
+	normalizedPath := normalizePath(videoPath)
+
+	msg := fmt.Sprintf("%d:%d:%s", episodeID, expire, normalizedPath)
+	mac := hmac.New(sha256.New, []byte(streamSecret()))
+	mac.Write([]byte(msg))
+	token := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	encodedPath := url.QueryEscape(normalizedPath)
+	return fmt.Sprintf("/api/v1/stream/%d?token=%s&expire=%d&p=%s",
+		episodeID, token, expire, encodedPath)
+}
+
+func verifyStreamToken(episodeID string, token string, expire int64, videoPath string) bool {
+	if time.Now().Unix() > expire {
+		return false
+	}
+	msg := fmt.Sprintf("%s:%d:%s", episodeID, expire, videoPath)
+	mac := hmac.New(sha256.New, []byte(streamSecret()))
+	mac.Write([]byte(msg))
+	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(token), []byte(expected))
+}
+
+func isPathSafe(videoPath string) bool {
+	if strings.Contains(videoPath, "..") {
+		return false
+	}
+	return strings.HasPrefix(videoPath, "./uploads/") ||
+		strings.HasPrefix(videoPath, "uploads/") ||
+		strings.HasPrefix(videoPath, "/uploads/")
+}
+
 func StreamVideo(c *gin.Context) {
 	episodeID := c.Param("episodeId")
+	token := c.Query("token")
+	expireStr := c.Query("expire")
+	rawPath := c.Query("p")
 
-	var episode models.Episode
-	if err := database.DB.First(&episode, episodeID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "episode not found"})
-		return
-	}
+	var videoPath string
 
-	// Increment view count via Redis (dedup per request burst)
-	viewKey := fmt.Sprintf("views:episode:%s", episodeID)
-	utils.Rdb.Incr(utils.Ctx, viewKey)
-
-	// Increment drama-level stats (async, non-blocking)
-	go func(dramaID uint) {
-		database.DB.Exec(
-			"INSERT INTO drama_stats (drama_id, total_views, updated_at) VALUES (?, 1, NOW()) "+
-				"ON DUPLICATE KEY UPDATE total_views = total_views + 1, updated_at = NOW()",
-			dramaID)
-
-		today := fmt.Sprintf("%s", strings.Split(fmt.Sprintf("%v", database.DB.NowFunc()), " ")[0])
-		database.DB.Exec(
-			"INSERT INTO daily_snapshots (drama_id, date, views, created_at) VALUES (?, ?, 1, NOW()) "+
-				"ON DUPLICATE KEY UPDATE views = views + 1",
-			dramaID, today)
-	}(episode.DramaID)
-
-	videoPath := episode.VideoPath
-	if videoPath == "" {
-		videoPath = fmt.Sprintf("./videos/%d/%d.mp4", episode.DramaID, episode.EpisodeNumber)
-	}
-
-	file, err := os.Open(videoPath)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "video file not found"})
-		return
-	}
-	defer file.Close()
-
-	stat, err := file.Stat()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot read file info"})
-		return
-	}
-
-	fileSize := stat.Size()
-	rangeHeader := c.GetHeader("Range")
-
-	if rangeHeader == "" {
-		c.Header("Content-Type", "video/mp4")
-		c.Header("Content-Length", strconv.FormatInt(fileSize, 10))
-		c.Header("Accept-Ranges", "bytes")
-		c.Status(http.StatusOK)
-		io.Copy(c.Writer, file)
-		return
-	}
-
-	rangeParts := strings.Replace(rangeHeader, "bytes=", "", 1)
-	rangeSplit := strings.Split(rangeParts, "-")
-
-	start, _ := strconv.ParseInt(rangeSplit[0], 10, 64)
-	var end int64
-	if len(rangeSplit) > 1 && rangeSplit[1] != "" {
-		end, _ = strconv.ParseInt(rangeSplit[1], 10, 64)
+	if token != "" && expireStr != "" && rawPath != "" {
+		expire, _ := strconv.ParseInt(expireStr, 10, 64)
+		decodedPath := normalizePath(rawPath)
+		if !verifyStreamToken(episodeID, token, expire, decodedPath) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired stream token"})
+			return
+		}
+		videoPath = decodedPath
 	} else {
-		end = fileSize - 1
+		var episode models.Episode
+		if err := database.DB.First(&episode, episodeID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "episode not found"})
+			return
+		}
+		videoPath = normalizePath(episode.VideoPath)
+		if videoPath == "" {
+			videoPath = fmt.Sprintf("./uploads/videos/%d/%d.mp4", episode.DramaID, episode.EpisodeNumber)
+		}
+
+		go func(dramaID uint, epID string) {
+			viewKey := fmt.Sprintf("views:episode:%s", epID)
+			utils.Rdb.Incr(utils.Ctx, viewKey)
+			database.DB.Exec(
+				"INSERT INTO drama_stats (drama_id, total_views, updated_at) VALUES (?, 1, NOW()) "+
+					"ON DUPLICATE KEY UPDATE total_views = total_views + 1, updated_at = NOW()", dramaID)
+		}(episode.DramaID, episodeID)
 	}
 
-	chunkSize := end - start + 1
+	if !isPathSafe(videoPath) {
+		log.Printf("[WARN] StreamVideo: suspicious path blocked: %s", videoPath)
+		c.Status(http.StatusForbidden)
+		return
+	}
 
-	c.Header("Content-Type", "video/mp4")
-	c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
-	c.Header("Content-Length", strconv.FormatInt(chunkSize, 10))
-	c.Header("Accept-Ranges", "bytes")
+	filePath := videoPath
+	if !strings.HasPrefix(filePath, ".") && !strings.HasPrefix(filePath, "/") {
+		filePath = "./" + filePath
+	} else if strings.HasPrefix(filePath, "/") {
+		filePath = "." + filePath
+	}
+
 	c.Header("Cache-Control", "public, max-age=86400")
-	c.Status(http.StatusPartialContent)
-
-	file.Seek(start, io.SeekStart)
-	io.CopyN(c.Writer, file, chunkSize)
+	c.File(filePath)
 }
