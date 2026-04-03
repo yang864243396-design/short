@@ -15,6 +15,8 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
@@ -118,6 +120,7 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         holder.seekBar.setProgress(0);
 
         String videoUrl = ApiClient.getStreamUrl(episode);
+        android.util.Log.d("FeedAdapter", "Playing URL: " + videoUrl);
         DefaultMediaSourceFactory sourceFactory = new DefaultMediaSourceFactory(
                 ExoPlayerCache.getDataSourceFactory(context));
         ExoPlayer player = new ExoPlayer.Builder(context)
@@ -127,6 +130,15 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         player.setRepeatMode(ExoPlayer.REPEAT_MODE_ONE);
         player.prepare();
         holder.playerView.setPlayer(player);
+
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onPlayerError(@NonNull PlaybackException error) {
+                android.util.Log.e("FeedAdapter", "ExoPlayer error: " + error.getMessage(), error);
+                android.widget.Toast.makeText(context,
+                        "Feed播放失败: " + error.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
 
         playerMap.put(position, player);
         setupSeekBar(holder.seekBar, player, position);

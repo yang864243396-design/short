@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -531,8 +532,9 @@ func UploadVideo(c *gin.Context) {
 	defer out.Close()
 	io.Copy(out, file)
 
+	normalizedDst := strings.ReplaceAll(dst, "\\", "/")
 	utils.Success(c, gin.H{
-		"path":     dst,
+		"path":     normalizedDst,
 		"filename": filename,
 		"size":     header.Size,
 	})

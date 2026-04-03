@@ -365,6 +365,13 @@ public class PlayerActivity extends AppCompatActivity {
                     setControlsVisible(true);
                 }
             }
+
+            @Override
+            public void onPlayerError(@NonNull androidx.media3.common.PlaybackException error) {
+                android.util.Log.e("PlayerActivity", "ExoPlayer error: " + error.getMessage(), error);
+                Toast.makeText(PlayerActivity.this,
+                        "播放失败: " + error.getMessage(), Toast.LENGTH_LONG).show();
+            }
         });
 
         handler.post(progressUpdateRunnable);
@@ -421,6 +428,7 @@ public class PlayerActivity extends AppCompatActivity {
         showAdUI(false);
 
         String url = ApiClient.getStreamUrl(ep);
+        android.util.Log.d("PlayerActivity", "Playing URL: " + url);
         player.setMediaItem(MediaItem.fromUri(Uri.parse(url)));
         player.prepare();
         player.play();

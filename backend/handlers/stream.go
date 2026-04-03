@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -108,6 +109,11 @@ func StreamVideo(c *gin.Context) {
 		filePath = "./" + filePath
 	} else if strings.HasPrefix(filePath, "/") {
 		filePath = "." + filePath
+	}
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "video file not found"})
+		return
 	}
 
 	c.Header("Cache-Control", "public, max-age=86400")

@@ -27,7 +27,9 @@ func GetFeed(c *gin.Context) {
 	var dramas []models.Drama
 	database.DB.Raw(`
 		SELECT * FROM dramas
-		WHERE enabled = 1
+		WHERE enabled = 1 AND id IN (
+			SELECT DISTINCT drama_id FROM episodes WHERE video_path IS NOT NULL AND video_path != ''
+		)
 		ORDER BY -LOG(RAND()) / GREATEST(heat, 1)
 		LIMIT ? OFFSET ?
 	`, pageSize, offset).Scan(&dramas)
@@ -35,9 +37,9 @@ func GetFeed(c *gin.Context) {
 	items := make([]gin.H, 0, len(dramas))
 	for _, drama := range dramas {
 		var ep models.Episode
-		result := database.DB.Where("drama_id = ? AND episode_number = ?", drama.ID, episodeNumber).First(&ep)
+		result := database.DB.Where("drama_id = ? AND episode_number = ? AND video_path != ''", drama.ID, episodeNumber).First(&ep)
 		if result.RowsAffected == 0 {
-			database.DB.Where("drama_id = ?", drama.ID).Order("episode_number ASC").First(&ep)
+			database.DB.Where("drama_id = ? AND video_path != ''", drama.ID).Order("episode_number ASC").First(&ep)
 			if ep.ID == 0 {
 				continue
 			}
