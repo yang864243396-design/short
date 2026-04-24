@@ -16,7 +16,40 @@ export const updateEpisode = (id: number, data: any) => request.put(`/episodes/$
 export const deleteEpisode = (id: number) => request.delete(`/episodes/${id}`)
 
 export const getUsers = (params: any) => request.get('/users', { params })
+export const getUser = (id: number) => request.get(`/users/${id}`)
 export const updateUser = (id: number, data: any) => request.put(`/users/${id}`, data)
+export const deleteUser = (id: number) => request.delete(`/users/${id}`)
+
+export const adminRechargeUser = (id: number, data: { coins?: number; yuan?: number; remark?: string }) =>
+  request.post(`/users/${id}/wallet/recharge`, data)
+
+export const adminDeductUser = (id: number, data: { coins: number; remark?: string }) =>
+  request.post(`/users/${id}/wallet/deduct`, data)
+
+export const getAdminWalletTransactions = (params: any) =>
+  request.get('/wallet/transactions', { params })
+
+/** 充值订单（含商户单号、平台单号、状态、用户等筛选） */
+export const getAdminRechargeOrders = (params: any) =>
+  request.get('/recharge-orders', { params })
+
+export const getUserRecentWalletTx = (userId: number, params?: { page_size?: number }) =>
+  request.get(`/users/${userId}/wallet/recent`, { params })
+
+export const getRechargePackagesAdmin = () => request.get('/recharge-packages')
+export const createRechargePackage = (data: any) => request.post('/recharge-packages', data)
+export const updateRechargePackage = (id: number, data: any) => request.put(`/recharge-packages/${id}`, data)
+export const deleteRechargePackage = (id: number) => request.delete(`/recharge-packages/${id}`)
+
+export const getPayProductConfigsAdmin = () => request.get('/pay-product-configs')
+export const createPayProductConfig = (data: any) => request.post('/pay-product-configs', data)
+export const updatePayProductConfig = (id: number, data: any) => request.put(`/pay-product-configs/${id}`, data)
+export const deletePayProductConfig = (id: number) => request.delete(`/pay-product-configs/${id}`)
+
+export const getAdSkipConfigsAdmin = () => request.get('/ad-skip-configs')
+export const createAdSkipConfig = (data: any) => request.post('/ad-skip-configs', data)
+export const updateAdSkipConfig = (id: number, data: any) => request.put(`/ad-skip-configs/${id}`, data)
+export const deleteAdSkipConfig = (id: number) => request.delete(`/ad-skip-configs/${id}`)
 
 export const getAdmins = (params: any) => request.get('/admins', { params })
 export const createAdmin = (data: any) => request.post('/admins', data)

@@ -20,6 +20,27 @@ import (
 	"short-drama-backend/utils"
 )
 
+// StreamEpisodeMainGrantKey 经 GetAdVideo 片头/免广流程后、允许该用户对该集走无签拉流的短期授权（与客户端 10 分钟看广解一致，便于不再对未付费公下发 HMAC 直链）。
+func StreamEpisodeMainGrantKey(userID, episodeID uint) string {
+	return fmt.Sprintf("stream:epgrant:%d:%d", userID, episodeID)
+}
+
+// SetStreamEpisodeMainGrant 写入约 10 分钟有效主片拉流授权（与片头/免广同窗口）。
+func SetStreamEpisodeMainGrant(userID, episodeID uint) {
+	if userID == 0 || episodeID == 0 {
+		return
+	}
+	_ = utils.Rdb.Set(utils.Ctx, StreamEpisodeMainGrantKey(userID, episodeID), "1", 10*time.Minute).Err()
+}
+
+func hasStreamEpisodeMainGrant(userID, episodeID uint) bool {
+	if userID == 0 || episodeID == 0 {
+		return false
+	}
+	n, err := utils.Rdb.Exists(utils.Ctx, StreamEpisodeMainGrantKey(userID, episodeID)).Result()
+	return err == nil && n > 0
+}
+
 func streamSecret() string {
 	return config.Load().JWT.Secret + ":stream"
 }
@@ -28,8 +49,16 @@ func normalizePath(p string) string {
 	return strings.ReplaceAll(p, "\\", "/")
 }
 
+func signedStreamTTLMinutes() int {
+	m := config.Load().StreamSignedURLMinutes
+	if m < 1 {
+		return 30
+	}
+	return m
+}
+
 func GenerateSignedStreamURL(episodeID uint, videoPath string) string {
-	expire := time.Now().Add(2 * time.Hour).Unix()
+	expire := time.Now().Add(time.Duration(signedStreamTTLMinutes()) * time.Minute).Unix()
 	normalizedPath := normalizePath(videoPath)
 
 	msg := fmt.Sprintf("%d:%d:%s", episodeID, expire, normalizedPath)
@@ -68,6 +97,17 @@ func StreamVideo(c *gin.Context) {
 	expireStr := c.Query("expire")
 	rawPath := c.Query("p")
 
+	var ep models.Episode
+	if err := database.DB.First(&ep, episodeID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "episode not found"})
+		return
+	}
+	var dramaRow models.Drama
+	if err := database.DB.Select("enabled").Where("id = ?", ep.DramaID).First(&dramaRow).Error; err != nil || !dramaRow.Enabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "content unavailable"})
+		return
+	}
+
 	var videoPath string
 
 	if token != "" && expireStr != "" && rawPath != "" {
@@ -79,14 +119,24 @@ func StreamVideo(c *gin.Context) {
 		}
 		videoPath = decodedPath
 	} else {
-		var episode models.Episode
-		if err := database.DB.First(&episode, episodeID).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "episode not found"})
+		// 无 HMAC 签名时：须登录，且（免费集 或 已金币解锁本集）方可拉流
+		userID := c.GetUint("user_id")
+		if userID == 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "请登录后播放，或使用带签名的播放地址"})
 			return
 		}
-		videoPath = normalizePath(episode.VideoPath)
+		if !ep.IsFree {
+			var unlockCount int64
+			database.DB.Model(&models.UserEpisodeCoinUnlock{}).
+				Where("user_id = ? AND episode_id = ?", userID, ep.ID).Count(&unlockCount)
+			if unlockCount < 1 && !hasStreamEpisodeMainGrant(userID, ep.ID) {
+				c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "未解锁本集，请先走片头或免广后重试，或使用已签播放地址"})
+				return
+			}
+		}
+		videoPath = normalizePath(ep.VideoPath)
 		if videoPath == "" {
-			videoPath = fmt.Sprintf("./uploads/videos/%d/%d.mp4", episode.DramaID, episode.EpisodeNumber)
+			videoPath = fmt.Sprintf("./uploads/videos/%d/%d.mp4", ep.DramaID, ep.EpisodeNumber)
 		}
 
 		go func(dramaID uint, epID string) {
@@ -95,7 +145,7 @@ func StreamVideo(c *gin.Context) {
 			database.DB.Exec(
 				"INSERT INTO drama_stats (drama_id, total_views, updated_at) VALUES (?, 1, NOW()) "+
 					"ON DUPLICATE KEY UPDATE total_views = total_views + 1, updated_at = NOW()", dramaID)
-		}(episode.DramaID, episodeID)
+		}(ep.DramaID, episodeID)
 	}
 
 	if !isPathSafe(videoPath) {

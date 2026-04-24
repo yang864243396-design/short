@@ -16,16 +16,23 @@ import com.hongguo.theater.R;
 import com.hongguo.theater.model.Drama;
 import com.hongguo.theater.ui.player.PlayerActivity;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class MustWatchAdapter extends RecyclerView.Adapter<MustWatchAdapter.ViewHolder> {
 
     private final Context context;
-    private final List<Drama> dramas;
+    private final List<Drama> dramas = new ArrayList<>();
 
-    public MustWatchAdapter(Context context, List<Drama> dramas) {
+    public MustWatchAdapter(Context context, List<Drama> data) {
         this.context = context;
-        this.dramas = dramas;
+        if (data != null) dramas.addAll(data);
+    }
+
+    public void setData(List<Drama> data) {
+        dramas.clear();
+        if (data != null) dramas.addAll(data);
+        notifyDataSetChanged();
     }
 
     @NonNull
@@ -47,6 +54,7 @@ public class MustWatchAdapter extends RecyclerView.Adapter<MustWatchAdapter.View
                     .error(R.drawable.bg_cover_placeholder)
                     .centerCrop().into(holder.cover);
         } else {
+            Glide.with(context).clear(holder.cover);
             holder.cover.setImageResource(R.drawable.bg_cover_placeholder);
         }
         holder.itemView.setOnClickListener(v -> {

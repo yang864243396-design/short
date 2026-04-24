@@ -1,0 +1,142 @@
+---
+description: 短剧平台项目架构速查，新会话自动加载
+globs: 
+alwaysApply: true
+---
+
+# 短剧平台（short-drama）项目架构
+
+三端：Go 后端 API + Vue3 管理后台 + Android 客户端
+
+## 技术栈
+- **backend/**: Go + Gin + GORM + MySQL + Redis，端口 8080
+- **admin/**: Vue3 + Vite + Element Plus + TypeScript，端口 3000，代理 → 8080
+- **android_stitch/**: Android（Java），包名 `com.hongguo.theater`
+
+## 数据库表 → 模型（backend/models/）
+
+| 表名 | 模型 | 文件 | 说明 |
+|------|------|------|------|
+| admins | Admin | user.go | 后台管理员账号 |
+| app_users | AppUser | user.go | App端用户账号 |
+| admin_roles | AdminRole | role.go | 管理员角色权限 |
+| dramas | Drama | drama.go | 剧集 |
+| episodes | Episode | episode.go | 分集（含 video_path） |
+| categories | Category | drama.go | 剧集分类 |
+| comments | Comment | （comment相关） | 评论 |
+| user_likes | UserLike | interaction.go | 用户点赞 |
+| user_collects | UserCollect | interaction.go | 用户收藏 |
+| user_histories | UserHistory | interaction.go | 观看记录 |
+| comment_likes | CommentLike | interaction.go | 评论点赞 |
+| wallet_transactions | WalletTransaction | wallet_transaction.go | 金币流水 |
+| banners | Banner | （banner相关） | 轮播图 |
+| ad_videos | AdVideo | ad.go | 广告视频 |
+| hot_searches | HotSearch | （search相关） | 热搜词 |
+| search_histories | SearchHistory | （search相关） | 搜索历史 |
+| feed_recommends | FeedRecommend | （feed相关） | Feed推荐 |
+| drama_stats | DramaStats | （ranking相关） | 剧集统计 |
+| daily_snapshots | DailySnapshot | （ranking相关） | 每日快照 |
+| user_ratings | UserRating | （rating相关） | 用户评分 |
+
+admins 与 app_users 完全独立；user_likes 等表的 user_id 引用 app_users.id
+
+## 后端代码定位（backend/）
+
+### 路由入口
+- `routes/routes.go` — 所有 API 路由注册
+
+### Handler 按功能
+| 功能 | 文件 | 关键函数 |
+|------|------|----------|
+| 首页聚合 | handlers/home.go | GetHomePage |
+| 剧集列表/详情/搜索 | handlers/drama.go | GetDramas, GetDramaDetail, SearchDramas |
+| 分集/点赞/收藏 | handlers/episode.go | GetEpisodes, LikeEpisode, CollectEpisode |
+| 视频流播放 | handlers/stream.go | StreamVideo |
+| Feed | handlers/feed.go | GetFeed |
+| 评论 | handlers/comment.go | GetComments, PostComment, LikeComment |
+| 排行榜 | handlers/ranking.go | GetRankings |
+| 搜索/热词 | handlers/search.go | GetHotSearch, GetSearchSuggest |
+| 轮播图 | handlers/banner.go | GetActiveBanners |
+| 广告 | handlers/ad.go | GetAdVideo |
+| App用户注册登录 | handlers/auth.go | Register, Login |
+| 用户资料/历史/收藏 | handlers/user.go | GetProfile, GetHistory, GetCollections |
+| 钱包 | handlers/wallet.go | GetWallet, GetWalletTransactions；后台充值与流水 |
+| **管理端全部** | handlers/admin.go | AdminLogin, AdminGet/Create/Update/Delete* |
+| 文件上传 | handlers/admin.go | UploadVideo, UploadImage |
+
+### 中间件
+- `middleware/auth.go` — App JWT(Auth) + 管理员 JWT(AdminAuth) + Token 生成
+- `middleware/cors.go` — 跨域
+- `middleware/ratelimit.go` — 限流
+
+### 其他
+- `database/init.go` — DB连接、AutoMigrate、种子数据
+- `config/config.go` — DB/Redis/JWT 配置（硬编码）
+- `cron/ranking_cron.go` — 定时刷新排行榜
+- `utils/redis.go` — Redis 缓存工具
+- `utils/response.go` — 统一 JSON 响应
+
+## 管理后台定位（admin/src/）
+
+| 页面 | 文件 | 对应后端 |
+|------|------|----------|
+| 登录 | views/LoginView.vue | POST /admin/login |
+| 仪表盘 | views/DashboardView.vue | GET /admin/dashboard |
+| 剧集管理 | views/DramaView.vue | /admin/dramas |
+| 分集管理 | views/EpisodeView.vue | /admin/episodes |
+| 分类管理 | views/CategoryView.vue | /admin/categories |
+| 用户管理 | views/UserView.vue | /admin/users |
+| 钱包流水 | views/WalletView.vue | /admin/wallet/transactions、用户充值 |
+| 管理员管理 | views/AdminManagerView.vue | /admin/admins |
+| 角色管理 | views/RoleView.vue | /admin/roles |
+| 评论管理 | views/CommentView.vue | /admin/comments |
+| 轮播管理 | views/BannerView.vue | /admin/banners |
+| 广告管理 | views/AdView.vue | /admin/ads |
+
+- `api/index.ts` — 所有后端接口封装
+- `api/request.ts` — Axios 实例（baseURL=/api/v1/admin，Bearer token）
+- `router/index.ts` — 路由 + 权限守卫（meta.perm）
+- `layouts/AdminLayout.vue` — 侧栏+顶栏框架布局
+
+## Android 定位（android_stitch/）
+
+| 功能 | 关键文件 |
+|------|----------|
+| 网络层 | api/ApiClient.java, api/ApiService.java |
+| 首页 | ui/home/HomeFragment.java, HomeAdapter.java |
+| 剧场 | ui/theater/TheaterFragment.java |
+| Feed 竖屏流 | ui/play/PlayFeedFragment.java, FeedPagerAdapter.java |
+| 播放页 | ui/player/PlayerActivity.java |
+| 评论弹窗 | ui/player/CommentBottomSheet.java |
+| 选集弹窗 | ui/player/EpisodeBottomSheet.java |
+| 搜索 | ui/search/SearchActivity.java |
+| 排行榜 | ui/ranking/RankingActivity.java |
+| 个人中心 | ui/profile/ProfileFragment.java |
+| 钱包 | ui/wallet/WalletActivity.java |
+| 登录 | ui/auth/LoginActivity.java |
+| 本地存储 | utils/PrefsManager.java |
+| 登录辅助 | utils/LoginHelper.java |
+
+Java 包路径：`com.hongguo.theater`
+布局 XML：`app/src/main/res/layout/`
+
+## 前端规划 · Skill 路由（省 token）
+
+仅 **admin/**、**Android** 界面或用户明确 **UI/设计/图标/动效/品牌** 时读 `.cursor/skills/SKILLS_INDEX.md`；**纯 backend/** 与界面无关任务 **不要** 读该索引。
+
+涉及 **admin/**、**Web UI/UX 方案、视觉与交互规划** 时：
+
+1. **只先读** `.cursor/skills/SKILLS_INDEX.md` 的 **§零 + §半**，再按表 **匹配 1～2 个** `SKILL.md`；勿预读多个 skill 全文。
+2. 再 **Read** 对应路径的 **单个** `SKILL.md`；仅当正文要求时，再读其 `reference/` 或脚本相关文件 **各 1 份**。
+3. 默认顺序（按任务删减）：**规划** → `shape` 或 `impeccable`；需要栈/色板/字体/UX 数据表时再 `ui-ux-pro-max`；**实现后**再用 `audit` / `polish` 等（见索引表）。
+4. **新增 skill**：只在 `SKILLS_INDEX.md` **表格追加一行**（触发条件 + 路径），不必改本节其它文字。
+
+## 快速定位指南
+
+改某功能时，按这个顺序找：
+1. **找路由** → `routes/routes.go` 确认 URL 和 handler 函数名
+2. **找处理器** → `handlers/xxx.go` 看业务逻辑
+3. **找模型** → `models/xxx.go` 看字段定义
+4. **找前端页面** → `admin/src/views/XxxView.vue`
+5. **找接口封装** → `admin/src/api/index.ts`
+6. **找 Android** → `android_stitch/.../ui/xxx/` + `api/ApiService.java`

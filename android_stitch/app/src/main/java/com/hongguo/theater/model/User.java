@@ -19,15 +19,11 @@ public class User {
     @SerializedName("coins")
     private int coins;
 
-    @SerializedName("vip_level")
-    private int vipLevel;
-
     public long getId() { return id; }
     public String getUsername() { return username; }
     public String getNickname() { return nickname; }
     public String getAvatar() { return avatar; }
     public int getCoins() { return coins; }
-    public int getVipLevel() { return vipLevel; }
 
     public String getDisplayName() {
         return nickname != null && !nickname.isEmpty() ? nickname : username;

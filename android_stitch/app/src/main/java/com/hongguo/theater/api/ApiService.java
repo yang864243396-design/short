@@ -1,5 +1,7 @@
 package com.hongguo.theater.api;
 
+import androidx.annotation.Nullable;
+
 import com.hongguo.theater.model.*;
 
 import java.util.List;
@@ -39,16 +41,9 @@ public interface ApiService {
     @GET("dramas/{id}/episodes")
     Call<ApiResponse<List<Episode>>> getDramaEpisodes(@Path("id") long dramaId);
 
-    // ============ Categories ============
-    @GET("categories")
-    Call<ApiResponse<List<Category>>> getCategories();
-
     // ============ Search ============
     @GET("search")
     Call<ApiResponse<List<Drama>>> search(@Query("keyword") String keyword);
-
-    @GET("search/hot")
-    Call<ApiResponse<List<HotSearch>>> getHotSearch();
 
     @GET("search/history")
     Call<ApiResponse<List<String>>> getSearchHistory();
@@ -56,16 +51,13 @@ public interface ApiService {
     @DELETE("search/history")
     Call<ApiResponse<Void>> clearSearchHistory();
 
-    @GET("search/suggest")
-    Call<ApiResponse<List<Drama>>> getSearchSuggest();
-
     // ============ Rankings ============
     @GET("rankings")
     Call<ApiResponse<List<RankItem>>> getRankings(@Query("type") String type);
 
     // ============ Ad ============
     @GET("ad/video")
-    Call<ApiResponse<Map<String, Object>>> getAdVideo();
+    Call<ApiResponse<Map<String, Object>>> getAdVideo(@Query("episode_id") Long episodeId);
 
     // ============ Feed ============
     @GET("feed")
@@ -78,6 +70,9 @@ public interface ApiService {
     // ============ Auth ============
     @POST("auth/login")
     Call<ApiResponse<Map<String, Object>>> login(@Body Map<String, String> body);
+
+    @POST("auth/send-register-code")
+    Call<ApiResponse<Object>> sendRegisterCode(@Body Map<String, String> body);
 
     @POST("auth/register")
     Call<ApiResponse<Map<String, Object>>> register(@Body Map<String, String> body);
@@ -102,6 +97,37 @@ public interface ApiService {
     @GET("user/likes")
     Call<ApiResponse<List<Episode>>> getLikedEpisodes();
 
+    @GET("user/wallet")
+    Call<ApiResponse<WalletBalance>> getWallet();
+
+    @GET("user/wallet/transactions")
+    Call<ApiResponse<WalletTransactionsPage>> getWalletTransactions(
+            @Query("page") int page,
+            @Query("page_size") int pageSize,
+            @Query("type") String type
+    );
+
+    @GET("recharge-packages")
+    Call<ApiResponse<RechargePackagesEnvelope>> getRechargePackages();
+
+    @POST("recharge-orders")
+    Call<ApiResponse<CreateRechargeOrderResponse>> createRechargeOrder(@Body Map<String, Object> body);
+
+    @GET("recharge-orders/query")
+    Call<ApiResponse<CreateRechargeOrderResponse>> queryRechargeOrder(
+            @Query("mch_order_no") @Nullable String mchOrderNo,
+            @Query("pay_order_id") @Nullable String payOrderId
+    );
+
+    @POST("recharge-orders/{id}/simulate-pay")
+    Call<ApiResponse<Map<String, Object>>> simulateRechargePay(@Path("id") long orderId);
+
+    @GET("user/ad-skip")
+    Call<ApiResponse<AdSkipStatus>> getAdSkipStatus();
+
+    @POST("user/ad-skip/purchase")
+    Call<ApiResponse<Map<String, Object>>> purchaseAdSkip(@Body Map<String, Object> body);
+
     // ============ Episode Interactions (Protected) ============
     @GET("episodes/{id}/interaction")
     Call<ApiResponse<Map<String, Object>>> getEpisodeInteraction(@Path("id") long episodeId);
@@ -115,10 +141,21 @@ public interface ApiService {
     @POST("episodes/{id}/history")
     Call<ApiResponse<Void>> recordHistory(@Path("id") long episodeId);
 
+    @POST("episodes/{id}/unlock-coins")
+    Call<ApiResponse<Map<String, Object>>> unlockEpisodeWithCoins(@Path("id") long episodeId);
+
     // ============ Comments ============
     @GET("episodes/{id}/comments")
-    Call<ApiResponse<List<Comment>>> getComments(
+    Call<ApiResponse<CommentPage>> getComments(
             @Path("id") long episodeId,
+            @Query("page") int page,
+            @Query("page_size") int pageSize
+    );
+
+    @GET("episodes/{id}/replies/{root_id}")
+    Call<ApiResponse<CommentPage>> getCommentReplies(
+            @Path("id") long episodeId,
+            @Path("root_id") long rootId,
             @Query("page") int page,
             @Query("page_size") int pageSize
     );
@@ -126,7 +163,7 @@ public interface ApiService {
     @POST("episodes/{id}/comments")
     Call<ApiResponse<Comment>> postComment(
             @Path("id") long episodeId,
-            @Body Map<String, String> body
+            @Body Map<String, Object> body
     );
 
     @POST("comments/{id}/like")

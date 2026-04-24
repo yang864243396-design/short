@@ -21,9 +21,10 @@ public class ApiClient {
     public static void init(Context context) {
         PrefsManager.init(context);
 
+        // DEBUG 也勿用 Level.BODY，避免全量 URL 参数/JSON 在 Logcat/调试浮层里刷屏，与 UI 易混淆
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
         logging.setLevel(BuildConfig.DEBUG
-                ? HttpLoggingInterceptor.Level.BODY
+                ? HttpLoggingInterceptor.Level.BASIC
                 : HttpLoggingInterceptor.Level.NONE);
 
         OkHttpClient client = new OkHttpClient.Builder()

@@ -16,7 +16,7 @@ import (
 func GetProfile(c *gin.Context) {
 	userID := c.GetUint("user_id")
 	var user models.AppUser
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	if err := database.DB.Where("id = ? AND deleted_at IS NULL", userID).First(&user).Error; err != nil {
 		utils.BadRequest(c, "用户不存在")
 		return
 	}
@@ -42,10 +42,10 @@ func UpdateProfile(c *gin.Context) {
 		updates["avatar"] = req.Avatar
 	}
 
-	database.DB.Model(&models.AppUser{}).Where("id = ?", userID).Updates(updates)
+	database.DB.Model(&models.AppUser{}).Where("id = ? AND deleted_at IS NULL", userID).Updates(updates)
 
 	var user models.AppUser
-	database.DB.First(&user, userID)
+	database.DB.Where("id = ? AND deleted_at IS NULL", userID).First(&user)
 	utils.Success(c, user)
 }
 
@@ -74,10 +74,10 @@ func UploadAvatar(c *gin.Context) {
 	io.Copy(out, file)
 
 	avatarURL := "/uploads/avatars/" + filename
-	database.DB.Model(&models.AppUser{}).Where("id = ?", userID).Update("avatar", avatarURL)
+	database.DB.Model(&models.AppUser{}).Where("id = ? AND deleted_at IS NULL", userID).Update("avatar", avatarURL)
 
 	var user models.AppUser
-	database.DB.First(&user, userID)
+	database.DB.Where("id = ? AND deleted_at IS NULL", userID).First(&user)
 	utils.Success(c, user)
 }
 
@@ -96,7 +96,7 @@ func GetHistory(c *gin.Context) {
 		dramaIDs[i] = h.DramaID
 	}
 	var dramas []models.Drama
-	database.DB.Where("id IN ?", dramaIDs).Find(&dramas)
+	database.DB.Where("id IN ? AND enabled = ?", dramaIDs, true).Find(&dramas)
 	dramaMap := map[uint]*models.Drama{}
 	for i := range dramas {
 		dramaMap[dramas[i].ID] = &dramas[i]
@@ -113,7 +113,10 @@ func GetHistory(c *gin.Context) {
 	var result []HistoryItem
 	for _, h := range histories {
 		d := dramaMap[h.DramaID]
-		finished := d != nil && d.TotalEpisodes > 0 && h.Progress >= d.TotalEpisodes
+		if d == nil {
+			continue
+		}
+		finished := d.TotalEpisodes > 0 && h.Progress >= d.TotalEpisodes
 		result = append(result, HistoryItem{
 			Drama:       d,
 			LastEpisode: h.Progress,
@@ -137,7 +140,7 @@ func GetCollections(c *gin.Context) {
 
 	var dramas []models.Drama
 	if len(dramaIDs) > 0 {
-		database.DB.Where("id IN ?", dramaIDs).Find(&dramas)
+		database.DB.Where("id IN ? AND enabled = ?", dramaIDs, true).Find(&dramas)
 	}
 	utils.Success(c, dramas)
 }
@@ -171,15 +174,18 @@ func GetLikedEpisodes(c *gin.Context) {
 			ids = append(ids, id)
 		}
 		var dramas []models.Drama
-		database.DB.Where("id IN ?", ids).Find(&dramas)
+		database.DB.Where("id IN ? AND enabled = ?", ids, true).Find(&dramas)
 		dramaMap := map[uint]*models.Drama{}
 		for i := range dramas {
 			dramaMap[dramas[i].ID] = &dramas[i]
 		}
 
 		for _, ep := range episodes {
-			item := EpisodeWithDrama{Episode: ep, Drama: dramaMap[ep.DramaID]}
-			result = append(result, item)
+			d := dramaMap[ep.DramaID]
+			if d == nil {
+				continue
+			}
+			result = append(result, EpisodeWithDrama{Episode: ep, Drama: d})
 		}
 	}
 	utils.Success(c, result)

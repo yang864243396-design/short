@@ -1,19 +1,61 @@
 <template>
   <div>
     <el-card>
-      <div style="display:flex;justify-content:space-between;margin-bottom:16px">
-        <span style="font-size:14px;color:#666">管理解锁广告视频，用户观看广告后可解锁非免费剧集</span>
-        <el-button type="primary" @click="showDialog()">新增广告</el-button>
+      <div style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div>
+            <span style="font-size:14px;color:#666">管理解锁广告（视频 / 图片），用户观看满时长后可解锁非免费剧集</span>
+            <div
+              style="font-size:12px;color:var(--el-text-color-secondary);line-height:1.55;margin-top:6px;max-width:720px"
+            >
+              视频：{{ VIDEO_HINT_AD }} 图片：{{ IMAGE_HINT_AD }}
+            </div>
+          </div>
+          <el-button type="primary" @click="showDialog()">新增广告</el-button>
+        </div>
       </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索 ID 或标题"
+          style="width:260px"
+          clearable
+          @keyup.enter="resetPageAndLoad"
+        />
+        <el-select v-model="filterMediaType" placeholder="类型" clearable style="width:120px" @change="resetPageAndLoad">
+          <el-option label="全部类型" value="" />
+          <el-option label="视频" value="video" />
+          <el-option label="图片" value="image" />
+        </el-select>
+        <el-select v-model="filterEnabled" placeholder="状态" clearable style="width:120px" @change="resetPageAndLoad">
+          <el-option label="全部状态" value="" />
+          <el-option label="启用" value="1" />
+          <el-option label="禁用" value="0" />
+        </el-select>
+        <el-button type="primary" @click="resetPageAndLoad">查询</el-button>
+      </div>
+
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="title" label="标题" min-width="160" />
         <el-table-column prop="duration" label="时长(秒)" width="90" />
         <el-table-column prop="weight" label="权重" width="70" />
-        <el-table-column label="视频" width="80">
+        <el-table-column label="类型" width="72">
           <template #default="{ row }">
-            <el-tag :type="row.video_path ? 'success' : 'danger'" size="small">{{ row.video_path ? '已上传' : '未上传'
-              }}</el-tag>
+            <el-tag :type="(row.media_type || 'video') === 'image' ? 'warning' : 'primary'" size="small">
+              {{ (row.media_type || 'video') === 'image' ? '图片' : '视频' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="素材" width="88">
+          <template #default="{ row }">
+            <el-tag
+              :type="((row.media_type || 'video') === 'image' ? row.image_url : row.video_path) ? 'success' : 'danger'"
+              size="small"
+            >
+              {{ ((row.media_type || 'video') === 'image' ? row.image_url : row.video_path) ? '已上传' : '未上传' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="80">
@@ -21,12 +63,30 @@
             <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '启用' : '禁用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240">
+        <el-table-column label="操作" width="280">
           <template #default="{ row }">
             <el-button type="primary" text size="small" @click="showDialog(row)">编辑</el-button>
-            <el-upload :action="'/api/v1/admin/upload/video'" :headers="uploadHeaders" :show-file-list="false"
-              :on-success="(res: any) => onVideoUploaded(row, res)" accept="video/*" style="display:inline-block">
+            <el-upload
+              v-if="(row.media_type || 'video') !== 'image'"
+              :action="adminUploadVideoUrl"
+              :headers="uploadHeaders"
+              :show-file-list="false"
+              :on-success="(res: any) => onVideoUploaded(row, res)"
+              accept="video/*"
+              style="display:inline-block"
+            >
               <el-button type="warning" text size="small">上传视频</el-button>
+            </el-upload>
+            <el-upload
+              v-else
+              :action="adminUploadImageUrl"
+              :headers="uploadHeaders"
+              :show-file-list="false"
+              :on-success="(res: any) => onRowImageUploaded(row, res)"
+              accept="image/*"
+              style="display:inline-block"
+            >
+              <el-button type="warning" text size="small">上传图片</el-button>
             </el-upload>
             <el-button :type="row.enabled ? 'info' : 'success'" text size="small" @click="toggleEnabled(row)">
               {{ row.enabled ? '禁用' : '启用' }}
@@ -37,23 +97,55 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-pagination v-if="total > 10" style="margin-top:16px;justify-content:flex-end"
-        layout="total, prev, pager, next" :total="total" :page-size="10" v-model:current-page="page"
-        @current-change="loadData" />
+      <el-pagination
+        v-if="total > pageSize"
+        style="margin-top:16px;justify-content:flex-end"
+        layout="total, prev, pager, next"
+        :total="total"
+        :page-size="pageSize"
+        v-model:current-page="page"
+        @current-change="loadData"
+      />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑广告' : '新增广告'" width="500px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑广告' : '新增广告'" width="520px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="标题"><el-input v-model="form.title" placeholder="广告名称" /></el-form-item>
-        <el-form-item label="广告视频">
-          <div style="display:flex;align-items:center;gap:8px">
+        <el-form-item label="类型">
+          <el-radio-group v-model="form.media_type">
+            <el-radio value="video">视频</el-radio>
+            <el-radio value="image">图片</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="form.media_type !== 'image'" label="广告视频">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <el-tag v-if="form.video_path" type="success" size="small">已上传</el-tag>
             <el-tag v-else type="danger" size="small">未上传</el-tag>
-            <el-upload :action="'/api/v1/admin/upload/video'" :headers="uploadHeaders" :show-file-list="false"
+            <el-upload :action="adminUploadVideoUrl" :headers="uploadHeaders" :show-file-list="false"
               :on-success="onDialogVideoUploaded" :on-error="() => ElMessage.error('上传失败')" accept="video/*"
               style="display:inline-block">
               <el-button type="warning" size="small">{{ form.video_path ? '重新上传' : '上传视频' }}</el-button>
             </el-upload>
+          </div>
+          <div
+            style="font-size:12px;color:var(--el-text-color-secondary);line-height:1.55;margin-top:6px;max-width:420px"
+          >
+            {{ VIDEO_HINT_AD }}
+          </div>
+        </el-form-item>
+        <el-form-item v-else label="广告图">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <el-input v-model="form.image_url" placeholder="图片 URL" style="flex:1;min-width:200px" />
+            <el-upload :action="adminUploadImageUrl" :headers="uploadHeaders" :show-file-list="false"
+              :on-success="onDialogImageUploaded" :on-error="() => ElMessage.error('上传失败')" accept="image/*"
+              style="display:inline-block">
+              <el-button type="success" size="small">{{ form.image_url ? '重新上传' : '上传图片' }}</el-button>
+            </el-upload>
+          </div>
+          <div
+            style="font-size:12px;color:var(--el-text-color-secondary);line-height:1.55;margin-top:6px;max-width:420px"
+          >
+            {{ IMAGE_HINT_AD }}
           </div>
         </el-form-item>
         <el-form-item label="时长(秒)">
@@ -75,28 +167,73 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getAds, createAd, updateAd, deleteAd } from '@/api'
+import { adminUploadVideoUrl, adminUploadImageUrl } from '@/config/api'
+import { VIDEO_HINT_AD, IMAGE_HINT_AD } from '@/config/uploadHints'
 
 const list = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)
+const pageSize = 10
 const loading = ref(false)
+const keyword = ref('')
+const filterMediaType = ref<string>('')
+const filterEnabled = ref<string>('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editId = ref(0)
 const saving = ref(false)
-const form = reactive({ title: '', duration: 15, weight: 1, enabled: true, video_path: '' })
+const form = reactive({
+  title: '',
+  duration: 15,
+  weight: 1,
+  enabled: true,
+  media_type: 'video',
+  video_path: '',
+  image_url: ''
+})
 
 const uploadHeaders = computed(() => ({
   Authorization: 'Bearer ' + (localStorage.getItem('admin_token') || '')
 }))
 
+/** 与后端 normalize 一致：以 media_type 为准，互斥保留一种素材 */
+function normalizeAdPayload(row: Record<string, any>) {
+  const mt = row.media_type === 'image' ? 'image' : 'video'
+  return {
+    ...row,
+    media_type: mt,
+    video_path: mt === 'image' ? '' : (row.video_path || ''),
+    image_url: mt === 'video' ? '' : (row.image_url || '')
+  }
+}
+
+watch(
+  () => form.media_type,
+  (mt) => {
+    if (mt === 'image') form.video_path = ''
+    else form.image_url = ''
+  }
+)
+
+function resetPageAndLoad() {
+  page.value = 1
+  loadData()
+}
+
 async function loadData() {
   loading.value = true
   try {
-    const res: any = await getAds({ page: page.value, page_size: 10 })
+    const params: Record<string, unknown> = {
+      page: page.value,
+      page_size: pageSize,
+      keyword: keyword.value.trim() || undefined,
+      media_type: filterMediaType.value || undefined,
+      enabled: filterEnabled.value !== '' && filterEnabled.value !== undefined ? filterEnabled.value : undefined
+    }
+    const res: any = await getAds(params)
     list.value = res.data?.list || []
     total.value = res.data?.total || 0
   } catch (e) { } finally { loading.value = false }
@@ -106,11 +243,28 @@ function showDialog(row?: any) {
   if (row) {
     isEdit.value = true
     editId.value = row.id
-    Object.assign(form, { title: row.title, duration: row.duration, weight: row.weight, enabled: row.enabled, video_path: row.video_path || '' })
+    const mt = row.media_type === 'image' ? 'image' : 'video'
+    Object.assign(form, {
+      title: row.title,
+      duration: row.duration,
+      weight: row.weight,
+      enabled: row.enabled,
+      media_type: mt,
+      video_path: mt === 'video' ? (row.video_path || '') : '',
+      image_url: mt === 'image' ? (row.image_url || '') : ''
+    })
   } else {
     isEdit.value = false
     editId.value = 0
-    Object.assign(form, { title: '', duration: 15, weight: 1, enabled: true, video_path: '' })
+    Object.assign(form, {
+      title: '',
+      duration: 15,
+      weight: 1,
+      enabled: true,
+      media_type: 'video',
+      video_path: '',
+      image_url: ''
+    })
   }
   dialogVisible.value = true
 }
@@ -118,7 +272,18 @@ function showDialog(row?: any) {
 function onDialogVideoUploaded(res: any) {
   if (res.code === 200 && res.data?.path) {
     form.video_path = res.data.path
+    form.image_url = ''
     ElMessage.success('视频上传成功')
+  } else {
+    ElMessage.error(res.message || '上传失败')
+  }
+}
+
+function onDialogImageUploaded(res: any) {
+  if (res.code === 200 && res.data?.url) {
+    form.image_url = res.data.url
+    form.video_path = ''
+    ElMessage.success('图片上传成功')
   } else {
     ElMessage.error(res.message || '上传失败')
   }
@@ -126,12 +291,23 @@ function onDialogVideoUploaded(res: any) {
 
 async function handleSave() {
   if (!form.title) { ElMessage.warning('请填写标题'); return }
+  if (form.media_type === 'image') {
+    if (!form.image_url?.trim()) { ElMessage.warning('请上传或填写广告图片'); return }
+  } else {
+    if (!form.video_path?.trim()) { ElMessage.warning('请上传广告视频'); return }
+  }
+  const payload = {
+    ...form,
+    video_path: form.media_type === 'image' ? '' : form.video_path,
+    image_url: form.media_type === 'video' ? '' : form.image_url,
+    media_type: form.media_type
+  }
   saving.value = true
   try {
     if (isEdit.value) {
-      await updateAd(editId.value, form)
+      await updateAd(editId.value, payload)
     } else {
-      await createAd(form)
+      await createAd(payload)
     }
     ElMessage.success('保存成功')
     dialogVisible.value = false
@@ -140,15 +316,27 @@ async function handleSave() {
 }
 
 async function toggleEnabled(row: any) {
-  await updateAd(row.id, { ...row, enabled: !row.enabled })
+  const p = normalizeAdPayload(row)
+  await updateAd(row.id, { ...p, enabled: !row.enabled })
   ElMessage.success('操作成功')
   loadData()
 }
 
 function onVideoUploaded(row: any, res: any) {
   if (res.code === 200) {
-    updateAd(row.id, { ...row, video_path: res.data.path }).then(() => {
+    updateAd(row.id, { ...row, media_type: 'video', video_path: res.data.path, image_url: '' }).then(() => {
       ElMessage.success('视频上传成功')
+      loadData()
+    })
+  } else {
+    ElMessage.error('上传失败')
+  }
+}
+
+function onRowImageUploaded(row: any, res: any) {
+  if (res.code === 200 && res.data?.url) {
+    updateAd(row.id, { ...row, media_type: 'image', image_url: res.data.url, video_path: '' }).then(() => {
+      ElMessage.success('图片上传成功')
       loadData()
     })
   } else {
@@ -164,5 +352,7 @@ async function handleDelete(id: number) {
   } catch (e) { }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+})
 </script>

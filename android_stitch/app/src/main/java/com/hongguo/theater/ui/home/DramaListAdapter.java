@@ -6,6 +6,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -53,7 +54,7 @@ public class DramaListAdapter extends RecyclerView.Adapter<DramaListAdapter.View
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Drama drama = dramas.get(position);
         holder.title.setText(drama.getTitle());
-        holder.category.setText(drama.getCategory());
+        DramaCardTagsHelper.bindTags(holder.tags, context, drama);
         holder.heat.setText(drama.getHeatText() + "热度");
         holder.status.setText(drama.getStatusText());
         holder.desc.setText(drama.getDescription());
@@ -64,6 +65,7 @@ public class DramaListAdapter extends RecyclerView.Adapter<DramaListAdapter.View
                     .error(R.drawable.bg_cover_placeholder)
                     .centerCrop().into(holder.cover);
         } else {
+            Glide.with(context).clear(holder.cover);
             holder.cover.setImageResource(R.drawable.bg_cover_placeholder);
         }
         holder.itemView.setOnClickListener(v -> {
@@ -80,13 +82,14 @@ public class DramaListAdapter extends RecyclerView.Adapter<DramaListAdapter.View
 
     static class ViewHolder extends RecyclerView.ViewHolder {
         ImageView cover;
-        TextView title, category, heat, status, desc;
+        TextView title, heat, status, desc;
+        LinearLayout tags;
 
         ViewHolder(View v) {
             super(v);
             cover = v.findViewById(R.id.drama_cover);
             title = v.findViewById(R.id.drama_title);
-            category = v.findViewById(R.id.drama_category);
+            tags = v.findViewById(R.id.drama_tags);
             heat = v.findViewById(R.id.drama_heat);
             status = v.findViewById(R.id.drama_status);
             desc = v.findViewById(R.id.drama_desc);

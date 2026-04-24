@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 无视觉拇指，保留拖动手势命中（抖音式细线不设圆点） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@android:color/transparent" />
+    <size
+        android:width="28dp"
+        android:height="28dp" />
+</shape>

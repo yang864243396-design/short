@@ -4,7 +4,6 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
@@ -27,6 +26,10 @@ public class PlayFeedFragment extends Fragment {
     private FeedPagerAdapter adapter;
     private int currentPage = 1;
     private boolean isLoading = false;
+    /** 冷启动不在首 Tab 请求 Feed，避免与首页接口抢连接与带宽 */
+    private boolean initialFeedRequested = false;
+    /** 从播放详情「全剧终」回刷剧页时，跳到该剧在 Feed 中的下一部 */
+    private long pendingScrollAfterDramaId = 0L;
 
     @Nullable
     @Override
@@ -43,18 +46,41 @@ public class PlayFeedFragment extends Fragment {
         adapter = new FeedPagerAdapter(requireContext());
         viewPager.setAdapter(adapter);
         viewPager.setOrientation(ViewPager2.ORIENTATION_VERTICAL);
+        viewPager.setOffscreenPageLimit(1);
 
         viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
                 adapter.onPageSelected(position);
-                if (position >= adapter.getItemCount() - 3 && !isLoading) {
+                if (position >= adapter.getItemCount() - 3 && !isLoading && initialFeedRequested) {
                     currentPage++;
                     loadFeed(true);
                 }
             }
         });
+    }
 
+    public void setPendingScrollAfterDrama(long dramaId) {
+        pendingScrollAfterDramaId = dramaId;
+        if (viewPager != null) {
+            viewPager.post(this::tryApplyPendingScroll);
+        }
+    }
+
+    private void tryApplyPendingScroll() {
+        if (pendingScrollAfterDramaId <= 0L || viewPager == null || adapter == null) return;
+        if (adapter.getItemCount() == 0) return;
+        int idx = adapter.findNextDramaStartIndex(pendingScrollAfterDramaId);
+        if (idx >= 0) {
+            viewPager.setCurrentItem(idx, true);
+            pendingScrollAfterDramaId = 0L;
+        }
+    }
+
+    /** 由 MainActivity 在用户首次切到「刷剧」时调用，不提前预加载 */
+    public void ensureInitialFeedLoaded() {
+        if (initialFeedRequested) return;
+        initialFeedRequested = true;
         loadFeed(false);
     }
 
@@ -71,6 +97,11 @@ public class PlayFeedFragment extends Fragment {
                         adapter.addData(response.body().getData());
                     } else {
                         adapter.setData(response.body().getData());
+                    }
+                    tryApplyPendingScroll();
+                    if (pendingScrollAfterDramaId > 0L && adapter.getItemCount() > 0
+                            && adapter.findNextDramaStartIndex(pendingScrollAfterDramaId) < 0) {
+                        pendingScrollAfterDramaId = 0L;
                     }
                 }
             }

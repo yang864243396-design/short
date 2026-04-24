@@ -110,6 +110,7 @@ public class ProfileListAdapter extends RecyclerView.Adapter<ProfileListAdapter.
                     .error(R.drawable.bg_cover_placeholder)
                     .centerCrop().into(iv);
         } else {
+            Glide.with(context).clear(iv);
             iv.setImageResource(R.drawable.bg_cover_placeholder);
         }
     }

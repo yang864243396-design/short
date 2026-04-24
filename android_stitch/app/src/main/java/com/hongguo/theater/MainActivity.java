@@ -1,5 +1,6 @@
 package com.hongguo.theater;
 
+import android.content.Intent;
 import android.os.Bundle;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -9,6 +10,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.hongguo.theater.ui.home.HomeFragment;
 import com.hongguo.theater.ui.play.PlayFeedFragment;
 import com.hongguo.theater.ui.profile.ProfileFragment;
+import com.hongguo.theater.utils.AdSkipCache;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -26,6 +28,30 @@ public class MainActivity extends AppCompatActivity {
         bottomNav = findViewById(R.id.bottom_nav);
         setupFragments();
         setupBottomNav();
+        handleLaunchIntent(getIntent());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        AdSkipCache.prefetchIfStale(this);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleLaunchIntent(intent);
+    }
+
+    private void handleLaunchIntent(Intent intent) {
+        if (intent == null) return;
+        if (!intent.getBooleanExtra("open_play_tab", false)) return;
+        long afterDramaId = intent.getLongExtra("after_drama_id", 0L);
+        bottomNav.setSelectedItemId(R.id.nav_play);
+        if (afterDramaId > 0L) {
+            playFeedFragment.setPendingScrollAfterDrama(afterDramaId);
+        }
     }
 
     private void setupFragments() {
@@ -64,6 +90,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void switchFragment(Fragment target) {
         if (target == activeFragment) return;
+        if (target == playFeedFragment) {
+            playFeedFragment.ensureInitialFeedLoaded();
+        }
         getSupportFragmentManager().beginTransaction()
                 .hide(activeFragment)
                 .show(target)
@@ -73,5 +102,10 @@ public class MainActivity extends AppCompatActivity {
 
     public void showBottomNav(boolean show) {
         bottomNav.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+    }
+
+    /** 切换到「我的」Tab（用于免广告解锁成功后回到个人中心）。 */
+    public void openProfileTab() {
+        bottomNav.setSelectedItemId(R.id.nav_profile);
     }
 }

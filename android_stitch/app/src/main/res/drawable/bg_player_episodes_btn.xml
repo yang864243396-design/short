@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深炭灰实心底，顶边与进度条衔接（参考 IDE 终端标签：#252525 + 白字） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/player_episodes_btn_fill" />
+    <corners
+        android:bottomLeftRadius="10dp"
+        android:bottomRightRadius="10dp"
+        android:topLeftRadius="0dp"
+        android:topRightRadius="0dp" />
+</shape>

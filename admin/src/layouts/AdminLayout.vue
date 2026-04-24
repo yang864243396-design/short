@@ -40,7 +40,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   DataAnalysis, Film, Menu, User, UserFilled,
-  ChatDotSquare, Picture, Setting, VideoCamera
+  ChatDotSquare, Picture, Setting, VideoCamera, Wallet, ShoppingCart, Timer
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -51,10 +51,13 @@ const menuItems = [
   { path: '/dramas', perm: 'dramas', label: '剧集管理', icon: Film },
   { path: '/categories', perm: 'categories', label: '分类管理', icon: Menu },
   { path: '/users', perm: 'users', label: '用户管理', icon: User },
+  { path: '/wallet', perm: 'wallet', label: '充值订单', icon: Wallet },
+  { path: '/recharge-packages', perm: 'recharge-packages', label: '充值套餐', icon: ShoppingCart },
   { path: '/admins', perm: 'admins', label: '管理员管理', icon: UserFilled },
   { path: '/comments', perm: 'comments', label: '评论管理', icon: ChatDotSquare },
   { path: '/banners', perm: 'banners', label: '轮播广告', icon: Picture },
   { path: '/ads', perm: 'ads', label: '解锁广告', icon: VideoCamera },
+  { path: '/ad-skip-config', perm: 'ads', label: '广告跳过卡', icon: Timer },
   { path: '/roles', perm: 'roles', label: '角色管理', icon: Setting },
 ]
 
@@ -66,6 +69,7 @@ const permissions = computed(() => {
 function hasPerm(perm: string) {
   const perms = permissions.value
   if (perms.includes('roles') && perm === 'roles') return true
+  if (perm === 'recharge-packages' && perms.includes('wallet')) return true
   return perms.includes(perm)
 }
 

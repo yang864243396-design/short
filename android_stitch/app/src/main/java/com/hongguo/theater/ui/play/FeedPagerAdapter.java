@@ -8,7 +8,9 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
@@ -25,20 +27,22 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import android.graphics.Color;
 import android.graphics.PorterDuff;
+import android.text.TextUtils;
 
 import com.hongguo.theater.R;
 import com.hongguo.theater.api.ApiClient;
 import com.hongguo.theater.model.ApiResponse;
-import com.hongguo.theater.model.Comment;
 import com.hongguo.theater.model.Drama;
 import com.hongguo.theater.model.Episode;
 import com.hongguo.theater.ui.player.CommentBottomSheet;
 import com.hongguo.theater.ui.player.PlayerActivity;
+import com.hongguo.theater.utils.DescriptionInlineExpandHelper;
 import com.hongguo.theater.utils.LoginHelper;
+import com.hongguo.theater.utils.RankingBadgeUiHelper;
+import com.hongguo.theater.utils.FeedDramaTagsBinder;
 import com.hongguo.theater.utils.ExoPlayerCache;
 import com.hongguo.theater.utils.PrefsManager;
 
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.FragmentActivity;
 
 import retrofit2.Call;
@@ -58,12 +62,16 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<Integer, Runnable> progressRunnables = new HashMap<>();
     private int currentPosition = 0;
+    /** 快速滑动时取消未返回的互动状态请求，减少无效回调与列表竞争 */
+    private Call<ApiResponse<Map<String, Object>>> pendingInteractionCall;
 
     public FeedPagerAdapter(Context context) {
         this.context = context;
     }
 
     public void setData(List<Episode> data) {
+        releaseAllPlayers();
+        currentPosition = 0;
         episodes.clear();
         if (data != null) episodes.addAll(data);
         notifyDataSetChanged();
@@ -77,6 +85,26 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         }
     }
 
+    /** Feed 中该剧最后一条的下一索引（下一部剧）；无则 -1 */
+    public int findNextDramaStartIndex(long dramaId) {
+        if (dramaId <= 0) return -1;
+        int lastIdx = -1;
+        for (int i = 0; i < episodes.size(); i++) {
+            if (dramaIdOf(episodes.get(i)) == dramaId) {
+                lastIdx = i;
+            }
+        }
+        if (lastIdx < 0) return -1;
+        if (lastIdx + 1 < episodes.size()) return lastIdx + 1;
+        return -1;
+    }
+
+    private static long dramaIdOf(Episode ep) {
+        if (ep.getDramaId() > 0) return ep.getDramaId();
+        Drama d = ep.getDrama();
+        return d != null ? d.getId() : 0L;
+    }
+
     @NonNull
     @Override
     public FeedViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -87,12 +115,23 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
     @OptIn(markerClass = UnstableApi.class)
     @Override
     public void onBindViewHolder(@NonNull FeedViewHolder holder, int position) {
+        holder.playerView.setPlayer(null);
+        ExoPlayer toRelease = playerMap.remove(position);
+        if (toRelease != null) {
+            toRelease.release();
+        }
+
         Episode episode = episodes.get(position);
         Drama drama = episode.getDrama();
 
         if (drama != null) {
+            RankingBadgeUiHelper.bind(holder.rankingBadge, drama, context, true);
             holder.title.setText(drama.getTitle());
-            holder.desc.setText(drama.getDescription());
+            FeedDramaTagsBinder.bind(holder.tagScroll, holder.tagRow, drama, context);
+            holder.descBindKey = episode.getId();
+            holder.feedDescription = TextUtils.isEmpty(drama.getDescription()) ? "" : drama.getDescription();
+            holder.descExpanded = false;
+            holder.desc.post(() -> bindFeedDescription(holder));
 
             int totalEpisodes = drama.getTotalEpisodes();
             if (totalEpisodes > 0) {
@@ -104,13 +143,27 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
             }
 
             holder.btnViewEpisodes.setOnClickListener(v -> {
+                int pos = holder.getBindingAdapterPosition();
+                if (pos == RecyclerView.NO_POSITION) return;
                 Intent intent = new Intent(context, PlayerActivity.class);
                 intent.putExtra("drama_id", drama.getId());
+                intent.putExtra("episode_id", episode.getId());
+                // 与 Feed 当前播放器完全一致的字串，确保 SimpleCache 按同一 key 命中、无需重复缓存
+                intent.putExtra("handoff_stream_url", ApiClient.getStreamUrl(episode));
+                ExoPlayer feedPlayer = playerMap.get(pos);
+                if (feedPlayer != null) {
+                    intent.putExtra("playback_position_ms", feedPlayer.getCurrentPosition());
+                }
                 context.startActivity(intent);
             });
         } else {
+            RankingBadgeUiHelper.bind(holder.rankingBadge, null, context, true);
             holder.title.setText(episode.getTitle());
-            holder.desc.setText("");
+            FeedDramaTagsBinder.bind(holder.tagScroll, holder.tagRow, null, context);
+            holder.descBindKey = episode.getId();
+            holder.feedDescription = "";
+            holder.descExpanded = false;
+            bindFeedDescription(holder);
             holder.btnViewEpisodes.setVisibility(View.GONE);
         }
 
@@ -121,14 +174,15 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
 
         String videoUrl = ApiClient.getStreamUrl(episode);
         android.util.Log.d("FeedAdapter", "Playing URL: " + videoUrl);
+
         DefaultMediaSourceFactory sourceFactory = new DefaultMediaSourceFactory(
                 ExoPlayerCache.getDataSourceFactory(context));
         ExoPlayer player = new ExoPlayer.Builder(context)
                 .setMediaSourceFactory(sourceFactory)
+                .setLoadControl(ExoPlayerCache.createVideoLoadControl())
                 .build();
         player.setMediaItem(MediaItem.fromUri(Uri.parse(videoUrl)));
         player.setRepeatMode(ExoPlayer.REPEAT_MODE_ONE);
-        player.prepare();
         holder.playerView.setPlayer(player);
 
         player.addListener(new Player.Listener() {
@@ -144,6 +198,7 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         setupSeekBar(holder.seekBar, player, position);
 
         if (position == currentPosition) {
+            player.prepare();
             player.play();
         }
 
@@ -159,23 +214,41 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         holder.btnCollect.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
 
         if (PrefsManager.isLoggedIn()) {
-            ApiClient.getService().getEpisodeInteraction(episode.getId())
-                    .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
+            if (pendingInteractionCall != null) {
+                pendingInteractionCall.cancel();
+                pendingInteractionCall = null;
+            }
+            pendingInteractionCall = ApiClient.getService().getEpisodeInteraction(episode.getId());
+            pendingInteractionCall.enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
                         @Override
                         public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
                                                @NonNull Response<ApiResponse<Map<String, Object>>> r) {
-                            if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
-                                Map<String, Object> data = r.body().getData();
-                                if (data != null) {
-                                    boolean liked = Boolean.TRUE.equals(data.get("liked"));
-                                    boolean collected = Boolean.TRUE.equals(data.get("collected"));
-                                    holder.btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
-                                    holder.btnCollect.setColorFilter(collected ? Color.parseColor("#FFC107") : Color.WHITE, PorterDuff.Mode.SRC_IN);
+                            if (call.isCanceled()) return;
+                            try {
+                                int ap = holder.getBindingAdapterPosition();
+                                if (ap != RecyclerView.NO_POSITION && ap < episodes.size()
+                                        && episodes.get(ap).getId() == episode.getId()
+                                        && r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
+                                    Map<String, Object> data = r.body().getData();
+                                    if (data != null) {
+                                        boolean liked = Boolean.TRUE.equals(data.get("liked"));
+                                        boolean collected = Boolean.TRUE.equals(data.get("collected"));
+                                        holder.btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
+                                        holder.btnCollect.setColorFilter(collected ? Color.parseColor("#FFC107") : Color.WHITE, PorterDuff.Mode.SRC_IN);
+                                    }
+                                }
+                            } finally {
+                                if (pendingInteractionCall == call) {
+                                    pendingInteractionCall = null;
                                 }
                             }
                         }
                         @Override
-                        public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {}
+                        public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {
+                            if (!call.isCanceled() && pendingInteractionCall == call) {
+                                pendingInteractionCall = null;
+                            }
+                        }
                     });
         }
 
@@ -244,6 +317,30 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         });
     }
 
+    private void bindFeedDescription(FeedViewHolder holder) {
+        final long bindKey = holder.descBindKey;
+        TextView tv = holder.desc;
+        String full = holder.feedDescription;
+        if (TextUtils.isEmpty(full)) {
+            tv.setText("");
+            tv.setMovementMethod(null);
+            return;
+        }
+        if (holder.descExpanded) {
+            DescriptionInlineExpandHelper.applyExpandedWithCollapse(tv, full, () -> {
+                if (holder.descBindKey != bindKey) return;
+                holder.descExpanded = false;
+                holder.desc.post(() -> bindFeedDescription(holder));
+            });
+        } else {
+            DescriptionInlineExpandHelper.applyCollapsedFirstLineWithRetry(tv, full, () -> {
+                if (holder.descBindKey != bindKey) return;
+                holder.descExpanded = true;
+                bindFeedDescription(holder);
+            });
+        }
+    }
+
     private void setupSeekBar(SeekBar seekBar, ExoPlayer player, int position) {
         stopProgressUpdate(position);
 
@@ -272,6 +369,10 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         Runnable runnable = new Runnable() {
             @Override
             public void run() {
+                // 仅当前可见页维持 200ms 刷新；离屏页不 post，避免多路 SeekBar 空转
+                if (position != currentPosition) {
+                    return;
+                }
                 if (!isUserSeeking[0] && player.getDuration() > 0) {
                     int progress = (int) (player.getCurrentPosition() * 1000 / player.getDuration());
                     seekBar.setProgress(progress);
@@ -280,7 +381,9 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
             }
         };
         progressRunnables.put(position, runnable);
-        handler.post(runnable);
+        if (position == currentPosition) {
+            handler.post(runnable);
+        }
     }
 
     private void stopProgressUpdate(int position) {
@@ -293,26 +396,43 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
     @Override
     public void onViewRecycled(@NonNull FeedViewHolder holder) {
         super.onViewRecycled(holder);
-        int pos = holder.getAdapterPosition();
-        stopProgressUpdate(pos);
-        if (holder.playerView.getPlayer() != null) {
+        int pos = holder.getBindingAdapterPosition();
+        if (pos != RecyclerView.NO_POSITION) {
+            stopProgressUpdate(pos);
             ExoPlayer player = playerMap.remove(pos);
             if (player != null) {
                 player.release();
             }
         }
+        holder.playerView.setPlayer(null);
     }
 
     public void onPageSelected(int position) {
+        for (Runnable r : progressRunnables.values()) {
+            handler.removeCallbacks(r);
+        }
+
         ExoPlayer old = playerMap.get(currentPosition);
-        if (old != null) old.pause();
+        if (old != null) {
+            old.pause();
+            old.setPlayWhenReady(false);
+        }
 
         currentPosition = position;
 
         ExoPlayer current = playerMap.get(position);
         if (current != null) {
             current.seekTo(0);
+            int state = current.getPlaybackState();
+            if (state == Player.STATE_IDLE) {
+                current.prepare();
+            }
             current.play();
+        }
+
+        Runnable tick = progressRunnables.get(position);
+        if (tick != null) {
+            handler.post(tick);
         }
     }
 
@@ -327,6 +447,10 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
     }
 
     public void releaseAllPlayers() {
+        if (pendingInteractionCall != null) {
+            pendingInteractionCall.cancel();
+            pendingInteractionCall = null;
+        }
         for (Map.Entry<Integer, Runnable> entry : progressRunnables.entrySet()) {
             handler.removeCallbacks(entry.getValue());
         }
@@ -342,15 +466,24 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
 
     static class FeedViewHolder extends RecyclerView.ViewHolder {
         PlayerView playerView;
-        TextView title, desc, likeCount, commentCount;
+        TextView rankingBadge, title, desc, likeCount, commentCount;
+        HorizontalScrollView tagScroll;
+        LinearLayout tagRow;
         TextView btnViewEpisodes;
+        /** 当前行简介绑定对应的剧集 id，避免异步点击与复用错位 */
+        long descBindKey;
+        String feedDescription = "";
+        boolean descExpanded;
         ImageView btnLike, btnComment, btnCollect, btnShare;
         SeekBar seekBar;
 
         FeedViewHolder(View v) {
             super(v);
             playerView = v.findViewById(R.id.player_view);
+            rankingBadge = v.findViewById(R.id.feed_ranking_badge);
             title = v.findViewById(R.id.feed_title);
+            tagScroll = v.findViewById(R.id.feed_tag_scroll);
+            tagRow = v.findViewById(R.id.feed_tag_row);
             desc = v.findViewById(R.id.feed_desc);
             likeCount = v.findViewById(R.id.feed_like_count);
             commentCount = v.findViewById(R.id.feed_comment_count);

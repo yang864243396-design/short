@@ -15,6 +15,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.Priority;
 import com.hongguo.theater.R;
 import com.hongguo.theater.api.ApiClient;
 import com.hongguo.theater.model.ApiResponse;
@@ -23,6 +25,7 @@ import com.hongguo.theater.model.Category;
 import com.hongguo.theater.model.Drama;
 import com.hongguo.theater.model.HomeData;
 import com.hongguo.theater.ui.search.SearchActivity;
+import com.hongguo.theater.utils.ImageUrlUtils;
 
 import java.util.List;
 
@@ -51,6 +54,24 @@ public class HomeFragment extends Fragment {
     private boolean hasMoreDramas = true;
     private static final int PAGE_SIZE = 20;
 
+    /** 首批数据到达时列表常未完成最终测量，Glide 初次加载易失败；刷新可见项触发二次绑定即可恢复 */
+    private static final long MAIN_LIST_IMAGE_RETRY_MS = 160;
+    private final Runnable mainListImageRetryRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isAdded()) return;
+            if (recyclerMain == null || mainAdapter == null) return;
+            LinearLayoutManager lm = (LinearLayoutManager) recyclerMain.getLayoutManager();
+            if (lm == null) return;
+            int first = lm.findFirstVisibleItemPosition();
+            int last = lm.findLastVisibleItemPosition();
+            if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) return;
+            for (int i = first; i <= last; i++) {
+                mainAdapter.notifyItemChanged(i);
+            }
+        }
+    };
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
@@ -78,7 +99,7 @@ public class HomeFragment extends Fragment {
         recyclerMain = view.findViewById(R.id.recycler_main);
         LinearLayoutManager lm = new LinearLayoutManager(requireContext());
         recyclerMain.setLayoutManager(lm);
-        mainAdapter = new HomeMainAdapter(requireContext());
+        mainAdapter = new HomeMainAdapter(requireActivity());
         recyclerMain.setAdapter(mainAdapter);
 
         recyclerMain.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -95,6 +116,14 @@ public class HomeFragment extends Fragment {
         view.findViewById(R.id.btn_retry).setOnClickListener(v -> refreshAll());
 
         refreshAll();
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (recyclerMain != null) {
+            recyclerMain.removeCallbacks(mainListImageRetryRunnable);
+        }
+        super.onDestroyView();
     }
 
     private void updateStickyCategory(LinearLayoutManager lm) {
@@ -142,10 +171,13 @@ public class HomeFragment extends Fragment {
                 if (response.isSuccessful() && response.body() != null
                         && response.body().isSuccess() && response.body().getData() != null
                         && !response.body().getData().isEmpty()) {
-                    mainAdapter.setBanners(response.body().getData());
+                    List<Banner> list = response.body().getData();
+                    preloadBannerImages(list);
+                    mainAdapter.setBanners(list);
                 } else {
                     mainAdapter.setBanners(null);
                 }
+                scheduleVisibleItemsImageRetry();
             }
 
             @Override
@@ -153,6 +185,28 @@ public class HomeFragment extends Fragment {
                 if (isAdded()) mainAdapter.setBanners(null);
             }
         });
+    }
+
+    private void scheduleVisibleItemsImageRetry() {
+        if (recyclerMain == null) return;
+        recyclerMain.removeCallbacks(mainListImageRetryRunnable);
+        recyclerMain.postDelayed(mainListImageRetryRunnable, MAIN_LIST_IMAGE_RETRY_MS);
+    }
+
+    /** 首装无磁盘缓存时提前拉取前几张，减轻 ViewPager2 首次绑定的等待 */
+    private void preloadBannerImages(List<Banner> list) {
+        if (list == null || list.isEmpty()) return;
+        int[] wh = BannerPagerAdapter.bannerTargetSizePx(requireContext());
+        int n = Math.min(list.size(), 3);
+        for (int i = 0; i < n; i++) {
+            String url = ImageUrlUtils.resolve(list.get(i).getImageUrl());
+            if (url == null || url.isEmpty()) continue;
+            Glide.with(requireContext())
+                    .load(url)
+                    .override(wh[0], wh[1])
+                    .priority(Priority.HIGH)
+                    .preload();
+        }
     }
 
     private void loadHomeData() {
@@ -174,6 +228,7 @@ public class HomeFragment extends Fragment {
                         currentCategory = "";
                         currentPage = 1;
                         hasMoreDramas = true;
+                        scheduleVisibleItemsImageRetry();
                         loadDramas(false);
                         return;
                     }
@@ -216,6 +271,7 @@ public class HomeFragment extends Fragment {
 
     private void loadDramas(boolean append) {
         isDramaLoading = true;
+        final int pageRequested = currentPage;
         ApiClient.getService().getDramas(currentCategory, currentPage, PAGE_SIZE)
                 .enqueue(new Callback<ApiResponse<List<Drama>>>() {
                     @Override
@@ -233,14 +289,19 @@ public class HomeFragment extends Fragment {
                             } else {
                                 mainAdapter.setDramas(dramas);
                             }
-                        } else {
-                            hasMoreDramas = false;
+                            scheduleVisibleItemsImageRetry();
+                        } else if (append && pageRequested > 1) {
+                            currentPage = pageRequested - 1;
                         }
                     }
 
                     @Override
                     public void onFailure(@NonNull Call<ApiResponse<List<Drama>>> call, @NonNull Throwable t) {
-                        if (isAdded()) isDramaLoading = false;
+                        if (!isAdded()) return;
+                        isDramaLoading = false;
+                        if (append && pageRequested > 1) {
+                            currentPage = pageRequested - 1;
+                        }
                     }
                 });
     }

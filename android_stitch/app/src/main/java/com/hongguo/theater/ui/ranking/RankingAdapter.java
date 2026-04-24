@@ -64,6 +64,7 @@ public class RankingAdapter extends RecyclerView.Adapter<RankingAdapter.ViewHold
                         .error(R.drawable.bg_cover_placeholder)
                         .centerCrop().into(holder.cover);
             } else {
+                Glide.with(context).clear(holder.cover);
                 holder.cover.setImageResource(R.drawable.bg_cover_placeholder);
             }
         }

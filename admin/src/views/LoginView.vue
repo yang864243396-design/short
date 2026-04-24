@@ -42,9 +42,7 @@ async function handleLogin() {
     if (res.data.user) {
       localStorage.setItem('admin_user', JSON.stringify(res.data.user))
     }
-    if (res.data.permissions) {
-      localStorage.setItem('admin_permissions', res.data.permissions)
-    }
+    localStorage.setItem('admin_permissions', String(res.data.permissions ?? ''))
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (e) {

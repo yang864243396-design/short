@@ -37,19 +37,3 @@ type CommentLike struct {
 	CommentID uint      `json:"comment_id" gorm:"uniqueIndex:idx_user_comment_like;not null"`
 	CreatedAt time.Time `json:"created_at"`
 }
-
-type CheckIn struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	UserID    uint      `json:"user_id" gorm:"index;not null"`
-	Coins     int       `json:"coins"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type WelfareTask struct {
-	ID          uint   `json:"id" gorm:"primaryKey"`
-	Title       string `json:"title" gorm:"size:100"`
-	Icon        string `json:"icon" gorm:"size:20"`
-	Reward      string `json:"reward" gorm:"size:50"`
-	RewardCoins int    `json:"reward_coins"`
-	TaskType    string `json:"task_type" gorm:"size:50"`
-}

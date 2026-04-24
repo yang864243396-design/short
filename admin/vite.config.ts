@@ -9,6 +9,7 @@ export default defineConfig({
       '@': resolve(__dirname, 'src')
     }
   },
+  // 生产：将 dist 部署到 center.h6ign.com；接口在 .env.production 的 VITE_API_ORIGIN（如 http://api2.h6ign.com）
   server: {
     port: 3000,
     host: '0.0.0.0',

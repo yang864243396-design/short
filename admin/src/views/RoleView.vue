@@ -73,6 +73,8 @@ const allPerms = [
   { key: 'dramas', label: '剧集管理' },
   { key: 'categories', label: '分类管理' },
   { key: 'users', label: '用户管理' },
+  { key: 'wallet', label: '钱包流水' },
+  { key: 'recharge-packages', label: '充值套餐' },
   { key: 'admins', label: '管理员管理' },
   { key: 'comments', label: '评论管理' },
   { key: 'banners', label: '轮播广告' },

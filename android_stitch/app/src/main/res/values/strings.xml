@@ -2,7 +2,6 @@
 <resources>
     <string name="app_name">红果剧场</string>
     <string name="nav_home">首页</string>
-    <string name="nav_theater">剧场</string>
     <string name="nav_play">播放</string>
     <string name="nav_profile">个人中心</string>
 
@@ -22,21 +21,33 @@
     <string name="view_episodes">查看选集</string>
     <string name="view_episodes_format">观看完整短剧·全%d集</string>
     <string name="player_episodes_format">选集·全%d集·免费观看</string>
+    <string name="player_desc_expand">展开</string>
+    <string name="player_desc_collapse">收起</string>
+    <string name="player_coin_pay_success_toast">支付成功</string>
 
     <string name="tab_history">历史</string>
     <string name="tab_collection">收藏</string>
     <string name="tab_liked">点赞</string>
 
     <string name="search_history">搜索历史</string>
-    <string name="hot_search">热搜榜</string>
-    <string name="guess_you_like">猜你喜欢</string>
     <string name="clear_history">清空</string>
 
     <string name="ranking_hot">热播榜</string>
     <string name="ranking_rising">飙升榜</string>
     <string name="ranking_rating">好评榜</string>
+    <string name="ranking_badge_player_format">%1$s · 第%2$d名</string>
 
     <string name="comment_hint">说点什么…</string>
+    <string name="comment_empty_title">暂无评论</string>
+    <string name="comment_empty_subtitle">快来发表第一条评论吧</string>
+    <string name="comment_post_success">发布成功</string>
+    <string name="comment_like_failed">操作失败，请稍后重试</string>
+    <string name="comment_reply_prefix_format">回复 %1$s：%2$s</string>
+    <!-- 抖音式：回复链标题行「A ▶ B」，正文单独一行 -->
+    <string name="comment_reply_chain_format">%1$s ▶ %2$s</string>
+    <string name="comment_replying_banner">回复 &#064;%1$s</string>
+    <string name="comment_reply_hint_format">回复 %1$s…</string>
+    <string name="comment_reply_cancel">取消回复</string>
     <string name="send">发送</string>
     <string name="reply">回复</string>
     <string name="like">点赞</string>
@@ -45,12 +56,98 @@
 
     <string name="login">登录</string>
     <string name="register">注册</string>
-    <string name="daily_reward">每日奖励</string>
-    <string name="system_notice">系统通知</string>
 
     <string name="loading">加载中…</string>
     <string name="no_data">暂无数据</string>
     <string name="network_error">网络错误，请重试</string>
     <string name="load_more">加载更多</string>
+    <string name="comment_load_more_replies">展开更多回复</string>
+    <string name="comment_expand_replies">展开%1$d条回复</string>
     <string name="no_more">没有更多了</string>
+
+    <string name="wallet_title">我的钱包</string>
+    <string name="wallet_nav_title">钱包</string>
+    <string name="wallet_current_balance">当前余额</string>
+    <string name="wallet_balance_flow_entry">余额流水 ›</string>
+    <string name="wallet_coin_rate_format">1 金币 ≈ ¥%1$.2f</string>
+    <string name="wallet_unit_coins_label">金币</string>
+    <string name="wallet_package_bonus_format">+%d 赠送</string>
+    <string name="wallet_support_title">充值遇到问题？</string>
+    <string name="wallet_support_desc">若充值长时间未到账，请保留订单信息并联系客服协助处理。</string>
+    <string name="wallet_header_coin_label">我的金币</string>
+    <string name="wallet_action_recharge">充值</string>
+    <string name="wallet_action_ad_skip">免广告</string>
+    <string name="wallet_balance_format">%1$d %2$s</string>
+    <string name="wallet_rule_format">规则：1 元 = %1$d 金币 · 余额约 ¥%2$.2f</string>
+    <string name="wallet_tx_section">钱包流水</string>
+    <string name="wallet_tx_detail_title">余额流水明细</string>
+    <string name="wallet_tx_tab_all">全部明细</string>
+    <string name="wallet_tx_tab_recharge">充值记录</string>
+    <string name="wallet_tx_tab_consume">消费流水</string>
+    <string name="wallet_tx_no_more">没有更多记录了</string>
+    <string name="wallet_tx_amount_plus_format">+%1$s</string>
+    <string name="wallet_tx_amount_minus_format">-%1$s</string>
+    <string name="wallet_tx_empty">暂无流水记录</string>
+    <string name="cd_back">返回</string>
+
+    <!-- 统一弹窗 HgDialog -->
+    <string name="hg_dialog_got_it">我知道了</string>
+    <string name="hg_recharge_success_title">充值成功</string>
+    <string name="hg_recharge_success_message">订单已完成，金币已发放到您的账户。</string>
+    <string name="hg_ad_skip_purchase_success_title">解锁成功</string>
+    <string name="hg_ad_skip_purchase_success_message">免广告权益已生效，可在个人中心查看。</string>
+    <string name="profile_wallet_summary_format">%1$d 金币</string>
+    <string name="wallet_pay_page_title">收银台</string>
+    <string name="wallet_pick_pay_method">选择支付方式</string>
+    <string name="wallet_no_pay_options">暂无可用支付方式，请在后台配置聚合产品</string>
+    <string name="wallet_pay_query_later">支付结果同步中，请稍后下拉刷新钱包</string>
+    <string name="wallet_recharge_submitting">订单提交中，请稍候</string>
+    <string name="wallet_pay_checking">正在检测支付结果，请稍候</string>
+    <string name="wallet_pay_result_title">支付结果</string>
+    <string name="wallet_pay_result_query_unknown">暂未获取到支付结果，请下拉页面刷新后查看。若已付款，也可稍等片刻后再次刷新。</string>
+    <string name="wallet_pay_result_server_error">服务繁忙，暂时无法完成校验，请稍后再试。已付款的订单可稍后在「钱包—流水」中确认。</string>
+    <string name="wallet_pay_result_order_gone">未找到该笔订单，请重新选择套餐发起支付。</string>
+    <string name="wallet_pay_result_unauthorized">登录已失效，请重新登录后再试。</string>
+    <string name="wallet_pay_result_network">网络连接异常，请检查网络后重试。</string>
+    <string name="wallet_pay_create_order_failed">无法发起支付，请稍后重试</string>
+    <string name="wallet_pay_create_bad_input">信息有误或套餐有变更，请重新选择后重试</string>
+    <string name="wallet_pay_query_pending_title">待支付</string>
+    <string name="wallet_pay_query_pending_message">未检测到该笔订单已支付。若已付款，请稍候在钱包页下拉刷新；或稍后再来查看。</string>
+    <string name="wallet_pay_query_cancelled_title">订单已取消</string>
+    <string name="wallet_pay_query_cancelled_message">该充值订单已关闭，可重新选择套餐发起支付。</string>
+    <string name="wallet_recharge_bad_response">服务器返回异常，请稍后重试</string>
+    <string name="wallet_pay_no_app">未安装对应支付应用，请先安装支付宝或微信</string>
+    <string name="wallet_pay_cannot_open">无法打开支付链接</string>
+    <string name="wallet_recharge_section">充值套餐</string>
+    <string name="wallet_recharge_simulate_hint">当前为模拟支付环境，下单后将自动模拟到账（生产请对接支付渠道）</string>
+    <string name="wallet_ad_skip_section">免广告</string>
+    <string name="wallet_buy_ad_skip">购买广告跳过卡</string>
+    <string name="wallet_buy_ad_skip_booster">购买加油包</string>
+    <string name="wallet_ad_skip_status_on">免广告至 %1$s · 剩余 %2$d 次</string>
+    <string name="wallet_ad_skip_status_off">当前无免广告权益</string>
+    <string name="wallet_ad_skip_status_sync_fail">免广告信息暂时无法更新，请稍后下拉重试</string>
+    <string name="wallet_ad_skip_dialog_subtitle">选择档位，使用金币延长免广告时长</string>
+    <string name="wallet_ad_skip_privilege_title">解锁免广告特权</string>
+    <string name="wallet_ad_skip_privilege_title_booster">选择加油包</string>
+    <string name="wallet_ad_skip_balance_format">当前余额: %1$s 金币</string>
+    <string name="wallet_ad_skip_go_recharge">去充值</string>
+    <string name="wallet_ad_skip_unlock_now">立即解锁</string>
+    <string name="wallet_ad_skip_pay_confirm_title">确认支付</string>
+    <string name="wallet_ad_skip_pay_confirm_message">购买「%1$s」\n需支付：%2$s 金币\n当前余额：%3$s 金币</string>
+    <string name="wallet_ad_skip_confirm_pay">确认支付</string>
+    <string name="wallet_ad_skip_insufficient_title">解锁失败</string>
+    <string name="wallet_ad_skip_insufficient_message">金币余额不足，无法解锁。\n需要 %1$s 金币，当前 %2$s 金币。</string>
+    <string name="common_cancel">取消</string>
+    <string name="wallet_ad_skip_dialog_close">关闭</string>
+    <string name="wallet_ad_skip_no_options">暂无在售档位</string>
+    <string name="wallet_ad_skip_price_refreshed_title">套餐信息已更新</string>
+    <string name="wallet_ad_skip_price_refreshed_message">「%1$s」价格已由 %2$s 金币调整为 %3$s 金币，请按最新价格重新选择购买。</string>
+    <string name="wallet_ad_skip_tier_removed_message">所选套餐已下架或不存在，已为您同步最新套餐列表。</string>
+    <string name="wallet_ad_skip_latest_tiers_header">当前在售套餐：</string>
+    <string name="wallet_ad_skip_reopen_picker">去选择套餐</string>
+    <string name="wallet_ad_skip_tier_hours_fmt">%d小时</string>
+    <string name="wallet_ad_skip_tier_days_int">%1$d天</string>
+    <string name="wallet_ad_skip_tier_days_decimal">%1$.1f天</string>
+    <string name="wallet_ad_skip_tier_sub_named">%1$s · %2$d小时</string>
+    <string name="wallet_ad_skip_unnamed_tier">跳过卡</string>
 </resources>

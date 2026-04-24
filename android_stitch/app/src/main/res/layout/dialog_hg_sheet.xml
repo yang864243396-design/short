@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_hg_dialog_panel"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="28dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="24dp">
+
+    <TextView
+        android:id="@+id/hg_dialog_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textColor="@color/on_surface"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/hg_dialog_message"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:textColor="@color/hg_dialog_message"
+        android:textSize="15sp" />
+
+    <!-- 主按钮在上（确认类）；次按钮在下 -->
+    <TextView
+        android:id="@+id/hg_dialog_btn_primary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/ripple_hg_dialog_btn_primary"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:minHeight="48dp"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp"
+        android:textColor="@color/hg_dialog_on_primary_btn"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/hg_dialog_btn_secondary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/ripple_hg_dialog_btn_secondary"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:minHeight="48dp"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp"
+        android:textColor="@color/hg_dialog_on_secondary_btn"
+        android:textSize="15sp" />
+</LinearLayout>

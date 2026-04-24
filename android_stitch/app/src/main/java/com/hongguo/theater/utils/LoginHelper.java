@@ -1,6 +1,5 @@
 package com.hongguo.theater.utils;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 
@@ -15,14 +14,34 @@ public class LoginHelper {
         if (PrefsManager.isLoggedIn()) {
             return true;
         }
-        new AlertDialog.Builder(context)
-                .setTitle("提示")
-                .setMessage("请先登录后再进行操作")
-                .setPositiveButton("去登录", (dialog, which) -> {
-                    context.startActivity(new Intent(context, LoginActivity.class));
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        HgDialog.showConfirm(
+                context,
+                "提示",
+                "请先登录后再进行操作",
+                "去登录",
+                d -> context.startActivity(new Intent(context, LoginActivity.class)),
+                "取消",
+                null,
+                true,
+                null);
         return false;
+    }
+
+    /**
+     * Token 过期时由 TokenInterceptor 调用，弹出重新登录提示
+     */
+    public static void showExpiredDialog(Context context, Runnable onDismiss) {
+        HgDialog.showConfirm(
+                context,
+                "登录已过期",
+                "您的登录状态已失效，请重新登录",
+                "重新登录",
+                d -> context.startActivity(new Intent(context, LoginActivity.class)),
+                "取消",
+                null,
+                false,
+                dialog -> {
+                    if (onDismiss != null) onDismiss.run();
+                });
     }
 }

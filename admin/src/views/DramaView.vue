@@ -1,10 +1,20 @@
 <template>
   <div>
     <el-card>
-      <div style="display:flex;justify-content:space-between;margin-bottom:16px">
-        <el-input v-model="keyword" placeholder="搜索剧集" style="width:300px" @keyup.enter="loadData" clearable>
-          <template #append><el-button @click="loadData">搜索</el-button></template>
-        </el-input>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px;justify-content:space-between">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+          <el-select v-model="filterStatus" placeholder="状态" clearable style="width:120px" @change="resetPageAndLoad">
+            <el-option label="更新中" value="ongoing" />
+            <el-option label="已完结" value="completed" />
+          </el-select>
+          <el-select v-model="filterEnabled" placeholder="上架" clearable style="width:120px" @change="resetPageAndLoad">
+            <el-option label="正常" value="1" />
+            <el-option label="下架" value="0" />
+          </el-select>
+          <el-input v-model="keyword" placeholder="搜索标题或剧集ID" style="width:280px" @keyup.enter="resetPageAndLoad" clearable>
+            <template #append><el-button @click="resetPageAndLoad">搜索</el-button></template>
+          </el-input>
+        </div>
         <el-button type="primary" @click="showDialog()">新增剧集</el-button>
       </div>
 
@@ -12,7 +22,7 @@
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column label="封面" width="80">
           <template #default="{ row }">
-            <el-image v-if="row.cover_url" :src="row.cover_url" style="width:48px;height:64px;border-radius:4px" fit="cover" />
+            <el-image v-if="row.cover_url" :src="resolveMediaUrl(row.cover_url)" style="width:48px;height:64px;border-radius:4px" fit="cover" />
             <span v-else style="color:#ccc;font-size:12px">无封面</span>
           </template>
         </el-table-column>
@@ -32,8 +42,8 @@
         </el-table-column>
         <el-table-column label="上架" width="70">
           <template #default="{ row }">
-            <el-tag :type="row.enabled !== false ? 'success' : 'danger'" size="small">
-              {{ row.enabled !== false ? '正常' : '关闭' }}
+            <el-tag :type="row.enabled !== false ? 'success' : 'info'" size="small">
+              {{ row.enabled !== false ? '正常' : '下架' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -46,7 +56,7 @@
               text size="small"
               @click="toggleEnabled(row)"
             >
-              {{ row.enabled !== false ? '关闭' : '启用' }}
+              {{ row.enabled !== false ? '下架' : '上架' }}
             </el-button>
             <el-popconfirm title="确定删除？" @confirm="handleDelete(row.id)">
               <template #reference><el-button type="danger" text size="small">删除</el-button></template>
@@ -75,7 +85,7 @@
               <div style="display:flex;gap:8px">
                 <el-input v-model="form.cover_url" placeholder="封面图片 URL" style="flex:1" />
                 <el-upload
-                  action="/api/v1/admin/upload/image"
+                  :action="adminUploadImageUrl"
                   :headers="uploadHeaders"
                   :show-file-list="false"
                   accept="image/*"
@@ -85,10 +95,15 @@
                   <el-button size="small" type="success">上传封面</el-button>
                 </el-upload>
               </div>
+              <div
+                style="font-size:12px;color:var(--el-text-color-secondary);line-height:1.55;margin-top:6px"
+              >
+                {{ IMAGE_HINT_COVER }}
+              </div>
             </div>
             <el-image
               v-if="form.cover_url"
-              :src="form.cover_url"
+              :src="resolveMediaUrl(form.cover_url)"
               style="width:80px;height:106px;border-radius:6px;flex-shrink:0"
               fit="cover"
             >
@@ -104,7 +119,6 @@
             <el-option v-for="cat in categoryList" :key="cat.id" :label="cat.name" :value="cat.name" />
           </el-select>
         </el-form-item>
-        <el-form-item label="标签"><el-input v-model="form.tags" placeholder="逗号分隔" /></el-form-item>
         <el-form-item label="总集数"><el-input-number v-model="form.total_episodes" :min="0" /></el-form-item>
         <el-form-item label="评分"><el-input-number v-model="form.rating" :min="0" :max="10" :precision="1" :step="0.1" /></el-form-item>
         <el-form-item label="热度"><el-input-number v-model="form.heat" :min="0" /></el-form-item>
@@ -114,6 +128,9 @@
             <el-option label="已完结" value="completed" />
           </el-select>
         </el-form-item>
+        <el-form-item label="上架">
+          <el-switch v-model="form.enabled" inline-prompt active-text="正常" inactive-text="下架" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -122,10 +139,17 @@
     </el-dialog>
 
     <!-- Episode management drawer -->
-    <el-drawer v-model="epDrawerVisible" :title="epDrawerTitle" size="680px" direction="rtl">
+    <el-drawer v-model="epDrawerVisible" :title="epDrawerTitle" size="680px" direction="rtl" @closed="onEpDrawerClosed">
       <div style="padding:0 4px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:12px">
-          <span style="font-size:13px;color:#999">共 {{ epTotal }} 集</span>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px">
+          <div>
+            <span style="font-size:13px;color:#999">共 {{ epTotal }} 集</span>
+            <div
+              style="font-size:12px;color:var(--el-text-color-secondary);line-height:1.55;margin-top:6px;max-width:560px"
+            >
+              {{ VIDEO_HINT_EPISODE }}
+            </div>
+          </div>
           <el-button type="primary" size="small" @click="showEpDialog()">新增分集</el-button>
         </div>
         <el-table :data="epList" v-loading="epLoading" stripe size="small">
@@ -136,23 +160,44 @@
               <el-tag :type="row.is_free ? 'success' : 'info'" size="small">{{ row.is_free ? '是' : '否' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="视频" width="70">
+          <el-table-column prop="unlock_coins" label="解锁金币" width="90">
             <template #default="{ row }">
-              <el-tag :type="row.video_path ? 'success' : 'danger'" size="small">{{ row.video_path ? '已上传' : '未上传' }}</el-tag>
+              {{ row.is_free ? '—' : row.unlock_coins ?? 0 }}
+            </template>
+          </el-table-column>
+          <el-table-column label="视频" min-width="130">
+            <template #default="{ row }">
+              <div v-if="epUploadEpisodeId === row.id" style="padding:4px 0">
+                <el-progress :percentage="Math.min(100, Math.round(epUploadPercent))" :stroke-width="8" />
+                <div style="font-size:11px;color:var(--el-text-color-secondary);margin-top:4px">上传中…</div>
+              </div>
+              <el-tag v-else :type="row.video_path ? 'success' : 'danger'" size="small">{{ row.video_path ? '已上传' : '未上传' }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="200">
             <template #default="{ row }">
               <el-button type="primary" text size="small" @click="showEpDialog(row)">编辑</el-button>
               <el-upload
-                :action="'/api/v1/admin/upload/video'"
+                :action="adminUploadVideoUrl"
                 :headers="uploadHeaders"
                 :show-file-list="false"
+                :disabled="epUploadEpisodeId !== null && epUploadEpisodeId !== row.id"
+                :before-upload="() => onEpVideoBeforeUpload(row)"
+                :on-progress="(e: any) => onEpVideoProgress(e, row)"
                 :on-success="(res: any) => onVideoUploaded(row, res)"
+                :on-error="onEpVideoUploadError"
                 accept="video/*"
                 style="display:inline-block"
               >
-                <el-button type="warning" text size="small">上传视频</el-button>
+                <el-button
+                  type="warning"
+                  text
+                  size="small"
+                  :loading="epUploadEpisodeId === row.id"
+                  :disabled="epUploadEpisodeId !== null && epUploadEpisodeId !== row.id"
+                >
+                  上传视频
+                </el-button>
               </el-upload>
               <el-popconfirm title="确定删除？" @confirm="handleEpDelete(row.id)">
                 <template #reference><el-button type="danger" text size="small">删除</el-button></template>
@@ -179,6 +224,10 @@
         <el-form-item label="集数"><el-input-number v-model="epForm.episode_number" :min="1" /></el-form-item>
         <el-form-item label="标题"><el-input v-model="epForm.title" /></el-form-item>
         <el-form-item label="免费"><el-switch v-model="epForm.is_free" /></el-form-item>
+        <el-form-item v-if="!epForm.is_free" label="观看金币">
+          <el-input-number v-model="epForm.unlock_coins" :min="1" :step="1" style="width:100%" />
+          <div style="font-size:12px;color:var(--el-text-color-secondary);margin-top:4px">非免费集必填，用户支付该金币可永久解锁本集并免广告观看</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="epDialogVisible = false">取消</el-button>
@@ -195,6 +244,8 @@ import {
   getDramas, createDrama, updateDrama, deleteDrama, getCategories,
   getEpisodes, createEpisode, updateEpisode, deleteEpisode
 } from '@/api'
+import { adminUploadImageUrl, adminUploadVideoUrl, resolveMediaUrl } from '@/config/api'
+import { IMAGE_HINT_COVER, VIDEO_HINT_EPISODE } from '@/config/uploadHints'
 
 // ===== Drama list =====
 const categoryList = ref<any[]>([])
@@ -203,6 +254,8 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 10
 const keyword = ref('')
+const filterStatus = ref<string | undefined>(undefined)
+const filterEnabled = ref<string | undefined>(undefined)
 const loading = ref(false)
 const dialogVisible = ref(false)
 const saving = ref(false)
@@ -213,8 +266,8 @@ const uploadHeaders = computed(() => ({
 }))
 
 const form = reactive({
-  title: '', description: '', cover_url: '', category: '', tags: '',
-  total_episodes: 0, rating: 0, heat: 0, status: 'ongoing'
+  title: '', description: '', cover_url: '', category: '',
+  total_episodes: 0, rating: 0, heat: 0, status: 'ongoing', enabled: false
 })
 
 function formatHeat(h: number) {
@@ -226,10 +279,11 @@ function showDialog(row?: any) {
   if (row) {
     editingId.value = row.id
     Object.assign(form, row)
+    form.enabled = row.enabled !== false
     selectedCategories.value = row.category ? row.category.split(',').map((s: string) => s.trim()).filter(Boolean) : []
   } else {
     editingId.value = null
-    Object.assign(form, { title: '', description: '', cover_url: '', category: '', tags: '', total_episodes: 0, rating: 0, heat: 0, status: 'ongoing' })
+    Object.assign(form, { title: '', description: '', cover_url: '', category: '', total_episodes: 0, rating: 0, heat: 0, status: 'ongoing', enabled: false })
     selectedCategories.value = []
   }
   dialogVisible.value = true
@@ -244,10 +298,18 @@ function onCoverUploaded(res: any) {
   }
 }
 
+function resetPageAndLoad() {
+  page.value = 1
+  loadData()
+}
+
 async function loadData() {
   loading.value = true
   try {
-    const res: any = await getDramas({ page: page.value, page_size: pageSize, keyword: keyword.value })
+    const params: Record<string, unknown> = { page: page.value, page_size: pageSize, keyword: keyword.value || undefined }
+    if (filterStatus.value) params.status = filterStatus.value
+    if (filterEnabled.value !== undefined && filterEnabled.value !== '') params.enabled = filterEnabled.value
+    const res: any = await getDramas(params)
     list.value = res.data.list || []
     total.value = res.data.total || 0
   } catch (e) {} finally { loading.value = false }
@@ -271,7 +333,7 @@ async function handleSave() {
 async function toggleEnabled(row: any) {
   const newEnabled = row.enabled === false
   await updateDrama(row.id, { ...row, enabled: newEnabled })
-  ElMessage.success(newEnabled ? '已启用' : '已关闭')
+  ElMessage.success(newEnabled ? '已上架（正常）' : '已下架')
   loadData()
 }
 
@@ -297,11 +359,18 @@ const epTotal = ref(0)
 const epPage = ref(1)
 const epPageSize = 10
 const epLoading = ref(false)
+/** 分集视频上传进度（仅一行） */
+const epUploadEpisodeId = ref<number | null>(null)
+const epUploadPercent = ref(0)
 
 const epDialogVisible = ref(false)
 const epEditingId = ref<number | null>(null)
 const epSaving = ref(false)
-const epForm = reactive({ drama_id: 0, episode_number: 1, title: '', is_free: true })
+const epForm = reactive({ drama_id: 0, episode_number: 1, title: '', is_free: false, unlock_coins: 10 })
+
+function onEpDrawerClosed() {
+  clearEpVideoUploadProgress()
+}
 
 function openEpisodeDrawer(drama: any) {
   currentDramaId.value = drama.id
@@ -327,13 +396,20 @@ function showEpDialog(row?: any) {
   } else {
     epEditingId.value = null
     const nextNum = epList.value.length > 0 ? Math.max(...epList.value.map((e: any) => e.episode_number)) + 1 : 1
-    Object.assign(epForm, { drama_id: currentDramaId.value, episode_number: nextNum, title: '', is_free: true })
+    Object.assign(epForm, { drama_id: currentDramaId.value, episode_number: nextNum, title: '', is_free: false, unlock_coins: 10 })
   }
   epDialogVisible.value = true
 }
 
 async function handleEpSave() {
   epForm.drama_id = currentDramaId.value
+  if (!epForm.is_free) {
+    const c = Number(epForm.unlock_coins)
+    if (!Number.isFinite(c) || c < 1) {
+      ElMessage.error('非免费分集必须设置观看金币（至少 1）')
+      return
+    }
+  }
   epSaving.value = true
   try {
     if (epEditingId.value) {
@@ -353,14 +429,43 @@ async function handleEpDelete(id: number) {
   loadEpisodes()
 }
 
+function clearEpVideoUploadProgress() {
+  epUploadEpisodeId.value = null
+  epUploadPercent.value = 0
+}
+
+function onEpVideoBeforeUpload(row: any) {
+  epUploadEpisodeId.value = row.id
+  epUploadPercent.value = 0
+  return true
+}
+
+function onEpVideoProgress(evt: any, _row: any) {
+  let p = typeof evt?.percent === 'number' ? evt.percent : 0
+  if (p > 0 && p <= 1) p *= 100
+  epUploadPercent.value = p
+}
+
+function onEpVideoUploadError() {
+  clearEpVideoUploadProgress()
+  ElMessage.error('上传失败')
+}
+
 function onVideoUploaded(row: any, res: any) {
   if (res.code === 200) {
-    updateEpisode(row.id, { ...row, video_path: res.data.path }).then(() => {
-      ElMessage.success('视频上传成功')
-      loadEpisodes()
-    })
+    epUploadPercent.value = 100
+    updateEpisode(row.id, { ...row, video_path: res.data.path })
+      .then(() => {
+        ElMessage.success('视频上传成功')
+        clearEpVideoUploadProgress()
+        loadEpisodes()
+      })
+      .catch(() => {
+        clearEpVideoUploadProgress()
+      })
   } else {
-    ElMessage.error('上传失败')
+    clearEpVideoUploadProgress()
+    ElMessage.error(res.message || '上传失败')
   }
 }
 

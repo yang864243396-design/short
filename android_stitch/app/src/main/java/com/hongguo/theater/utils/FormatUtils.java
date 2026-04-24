@@ -1,5 +1,12 @@
 package com.hongguo.theater.utils;
 
+import android.content.Context;
+
+import com.hongguo.theater.R;
+import com.hongguo.theater.model.AdSkipStatus;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -42,5 +49,44 @@ public class FormatUtils {
         } catch (ParseException e) {
             return isoTime;
         }
+    }
+
+    /**
+     * 免广告档位：将小时换算为「天」展示。先换算为 {@code hours/24}，再四舍五入保留 1 位小数；
+     * 若结果为整数则不带小数（如 30 天、30.4 天）。
+     */
+    public static String formatAdSkipDurationDaysFromHours(Context ctx, int hours) {
+        if (hours <= 0) {
+            return ctx.getString(R.string.wallet_ad_skip_tier_days_int, 0);
+        }
+        BigDecimal days = BigDecimal.valueOf(hours)
+                .divide(BigDecimal.valueOf(24), 10, RoundingMode.HALF_UP)
+                .setScale(1, RoundingMode.HALF_UP);
+        if (days.stripTrailingZeros().scale() <= 0) {
+            return ctx.getString(R.string.wallet_ad_skip_tier_days_int, days.intValue());
+        }
+        return ctx.getString(R.string.wallet_ad_skip_tier_days_decimal, days.doubleValue());
+    }
+
+    /** 免广告档位主标题：时间包为「名 + 天」；加油包为「名 + 次数」。 */
+    public static String formatAdSkipTierTitle(Context ctx, AdSkipStatus.Config c) {
+        if (c == null) return "";
+        if ("booster".equals(c.getPackageType())) {
+            String name = c.getName();
+            int n = c.getSkipCount() > 0 ? c.getSkipCount() : 0;
+            if (name != null && !name.trim().isEmpty()) {
+                return name.trim() + " · " + n + "次";
+            }
+            return n + "次";
+        }
+        String name = c.getName();
+        String daysPart = formatAdSkipDurationDaysFromHours(ctx, c.getDurationHours());
+        if (c.getSkipCount() > 0) {
+            daysPart = daysPart + " · " + c.getSkipCount() + "次";
+        }
+        if (name != null && !name.trim().isEmpty()) {
+            return name.trim() + " " + daysPart;
+        }
+        return daysPart;
     }
 }

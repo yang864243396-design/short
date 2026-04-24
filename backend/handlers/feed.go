@@ -34,8 +34,13 @@ func GetFeed(c *gin.Context) {
 		LIMIT ? OFFSET ?
 	`, pageSize, offset).Scan(&dramas)
 
-	items := make([]gin.H, 0, len(dramas))
-	for _, drama := range dramas {
+	type feedRow struct {
+		drama *models.Drama
+		ep    models.Episode
+	}
+	rows := make([]feedRow, 0, len(dramas))
+	for i := range dramas {
+		drama := &dramas[i]
 		var ep models.Episode
 		result := database.DB.Where("drama_id = ? AND episode_number = ? AND video_path != ''", drama.ID, episodeNumber).First(&ep)
 		if result.RowsAffected == 0 {
@@ -44,10 +49,36 @@ func GetFeed(c *gin.Context) {
 				continue
 			}
 		}
+		rows = append(rows, feedRow{drama, ep})
+	}
 
+	items := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		drama := row.drama
+		ep := row.ep
+		// 竖滑 Feed 不先走片头/Grant，须带短时 HMAC 才能直播；分集列表仍按权益收紧 stream_url
 		streamURL := ""
 		if ep.VideoPath != "" {
 			streamURL = GenerateSignedStreamURL(ep.ID, ep.VideoPath)
+		}
+
+		AttachDramaRanking(drama)
+		dramaH := gin.H{
+			"id":             drama.ID,
+			"title":          drama.Title,
+			"cover_url":      drama.CoverURL,
+			"description":    drama.Description,
+			"category":        drama.Category,
+			"category_list":   utils.ParseCategoryList(drama.Category),
+			"total_episodes": drama.TotalEpisodes,
+			"rating":         drama.Rating,
+			"heat":           drama.Heat,
+		}
+		if drama.Ranking != nil {
+			dramaH["ranking"] = gin.H{
+				"list": drama.Ranking.List,
+				"rank": drama.Ranking.Rank,
+			}
 		}
 
 		items = append(items, gin.H{
@@ -61,16 +92,7 @@ func GetFeed(c *gin.Context) {
 			"like_count":     ep.LikeCount,
 			"comment_count":  ep.CommentCount,
 			"view_count":     ep.ViewCount,
-			"drama": gin.H{
-				"id":             drama.ID,
-				"title":          drama.Title,
-				"cover_url":      drama.CoverURL,
-				"description":    drama.Description,
-				"category":       drama.Category,
-				"total_episodes": drama.TotalEpisodes,
-				"rating":         drama.Rating,
-				"heat":           drama.Heat,
-			},
+			"drama":          dramaH,
 		})
 	}
 

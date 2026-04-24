@@ -1,4 +1,5 @@
 # ============ OS / Editor ============
+__pycache__/
 .DS_Store
 Thumbs.db
 *.swp
@@ -12,6 +13,8 @@ admin/node_modules/
 admin/dist/
 admin/.env
 admin/.env.local
+admin/.env.development
+admin/.env.production
 admin/.env.*.local
 admin/.vite/
 admin/*.local
@@ -26,8 +29,11 @@ android_stitch/captures/
 android_stitch/.cxx/
 android_stitch/*.apk
 android_stitch/*.aab
+android_stitch/app/release/
 
 # ============ backend (Go) ============
+backend/short
+backend/short.exe
 backend/*.exe
 backend/*.exe~
 backend/*.dll

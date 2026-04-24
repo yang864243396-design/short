@@ -23,6 +23,8 @@
 
     <dimen name="banner_height">200dp</dimen>
     <dimen name="bottom_nav_height">56dp</dimen>
+    <dimen name="bottom_nav_padding_vertical">0dp</dimen>
+    <dimen name="bottom_nav_icon_size">20dp</dimen>
     <dimen name="icon_sm">20dp</dimen>
     <dimen name="icon_md">24dp</dimen>
     <dimen name="icon_lg">32dp</dimen>
@@ -35,4 +37,18 @@
     <dimen name="card_elevation">0dp</dimen>
     <dimen name="drama_card_width">120dp</dimen>
     <dimen name="drama_card_height">160dp</dimen>
+
+    <!-- 免广告特权弹窗：2 列网格，可视最多 3 行（6 个）；超出仅列表区域滚动，无滚动条 -->
+    <dimen name="ad_skip_tier_row_min_height">56dp</dimen>
+    <dimen name="ad_skip_tier_row_gap">12dp</dimen>
+    <dimen name="ad_skip_tier_grid_cell_min_height">72dp</dimen>
+    <!-- 网格每行估算高度下限（含双行标题），用于自适应列表高度 -->
+    <dimen name="ad_skip_tier_grid_row_min_height">88dp</dimen>
+    <dimen name="ad_skip_tier_grid_gap">12dp</dimen>
+    <!-- 3 行网格高度 + 行间距 + 列表 padding（约 6 个套餐，与 ad_skip_tier_grid_row_min_height 一致） -->
+    <dimen name="ad_skip_dialog_grid_max_height">300dp</dimen>
+    <dimen name="ad_skip_dialog_root_max_height">520dp</dimen>
+    <dimen name="ad_skip_dialog_list_max_height">252dp</dimen>
+    <dimen name="ad_skip_dialog_corner">20dp</dimen>
+    <dimen name="ad_skip_tier_pill_corner">28dp</dimen>
 </resources>

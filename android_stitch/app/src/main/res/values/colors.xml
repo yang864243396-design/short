@@ -2,6 +2,12 @@
 <resources>
     <!-- Primary palette (Electric Ember) -->
     <color name="primary">#FFFF3D00</color>
+    <!-- 余额流水：正项金额 / Tab 强调（对齐 OLED 钱包参考 #FF4D00） -->
+    <color name="wallet_tx_accent">#FFFF4D00</color>
+    <!-- 钱包页胶囊入口：参考稿桃橙 + 炭灰底 + 图标圈暖褐（ui-ux-pro-max OLED 低白光） -->
+    <color name="wallet_entry_peach">#FFFF8E73</color>
+    <color name="wallet_entry_pill_bg">#FF1E1E22</color>
+    <color name="wallet_entry_icon_bg">#FF3D2E2A</color>
     <color name="primary_variant">#FFFF5D2E</color>
     <color name="primary_light">#FFFF8F70</color>
     <color name="primary_container">#FFFF7852</color>
@@ -25,6 +31,17 @@
     <!-- Accent colors -->
     <color name="tertiary">#FFE9AAFF</color>
     <color name="error">#FFFF6E84</color>
+
+    <!-- 红果统一弹窗（确认 / 告知） -->
+    <color name="hg_dialog_panel">#FF1C1C1E</color>
+    <color name="hg_dialog_message">#FFA1A1A1</color>
+    <color name="hg_dialog_btn_primary">#FFFF8C73</color>
+    <color name="hg_dialog_on_primary_btn">#FF1A1A1A</color>
+    <color name="hg_dialog_btn_secondary">#FF2C2C2E</color>
+    <color name="hg_dialog_on_secondary_btn">#FFEBEBF5</color>
+
+    <!-- 折叠回复行左侧短横线 -->
+    <color name="comment_collapse_rule">#4D767575</color>
 
     <!-- Outline -->
     <color name="outline">#FF767575</color>
@@ -51,4 +68,35 @@
     <color name="white">#FFFFFFFF</color>
     <color name="black">#FF000000</color>
     <color name="transparent">#00000000</color>
+
+    <!-- 剧目简介内联「展开 / 收起」：暗夜视频上高可读 + 品牌强调（对齐 ui-ux-pro-max 高对比 CTA 思路） -->
+    <color name="desc_inline_action_text">#FFFF6B47</color>
+    <color name="desc_inline_action_bg">#40FF3D00</color>
+    <color name="desc_inline_action_shadow">#66FF3D00</color>
+
+    <!-- 播放页榜单标签（与全屏遮罩上的可读性平衡） -->
+    <color name="player_ranking_chip_fill">#591E1B4B</color>
+    <color name="player_ranking_chip_stroke">#99FF3D00</color>
+    <color name="player_ranking_chip_text">#FFF8FAFC</color>
+    <color name="player_ranking_chip_accent">#FFFF6B47</color>
+
+    <!-- 刷剧页分类/标签 chip：暗夜底 + 品牌描边（ui-ux-pro-max OLED / 与榜单标签同系） -->
+    <color name="feed_drama_tag_fill">#591E1B4B</color>
+    <color name="feed_drama_tag_stroke">#73FF3D00</color>
+    <color name="feed_drama_tag_text">#EEF8FAFC</color>
+
+    <!-- 播放页底部 Dock：纯黑底（OLED）；选集为深灰底 + 白字（终端标签式） -->
+    <color name="player_dock_bg">#FF000000</color>
+    <color name="player_dock_top_line">#26F8FAFC</color>
+    <color name="player_progress_track">#3D64748B</color>
+    <color name="player_progress_fill">#FFFF6B47</color>
+    <!-- 看剧页细线进度（抖音式：暗底 + 高亮已播段，对齐 OLED低白光） -->
+    <color name="player_progress_line_track">#2EFFFFFF</color>
+    <color name="player_progress_line_fill">#F5FFFFFF</color>
+    <color name="player_episodes_btn_fill">#FF252525</color>
+    <color name="player_episodes_btn_text">#FFFFFFFF</color>
+
+    <!-- 免广告特权弹窗（设计稿：深底 + #FF5722 强调） -->
+    <color name="ad_skip_privilege_accent">#FFFF5722</color>
+    <color name="ad_skip_privilege_balance_muted">#FF8A8A8A</color>
 </resources>

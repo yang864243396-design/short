@@ -3,21 +3,20 @@ package com.hongguo.theater.utils;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-import java.util.HashSet;
-import java.util.Set;
-
 public class PrefsManager {
 
     private static final String PREFS_NAME = "hongguo_prefs";
     private static final String KEY_TOKEN = "token";
     private static final String KEY_USER_ID = "user_id";
     private static final String KEY_USERNAME = "username";
-    private static final String KEY_UNLOCKED_PREFIX = "unlocked_episodes_";
 
     private static SharedPreferences prefs;
+    private static Context appContext;
 
     public static void init(Context context) {
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        Context app = context.getApplicationContext();
+        appContext = app;
+        prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     public static void saveToken(String token) {
@@ -29,7 +28,11 @@ public class PrefsManager {
     }
 
     public static void saveUserId(long userId) {
+        long old = prefs.getLong(KEY_USER_ID, 0L);
         prefs.edit().putLong(KEY_USER_ID, userId).apply();
+        if (appContext != null && old != userId) {
+            AdSkipCache.ensureUser(appContext, userId);
+        }
     }
 
     public static long getUserId() {
@@ -55,22 +58,9 @@ public class PrefsManager {
                 .remove(KEY_USER_ID)
                 .remove(KEY_USERNAME)
                 .apply();
-    }
-
-    private static String getUnlockedKey() {
-        long uid = getUserId();
-        return KEY_UNLOCKED_PREFIX + uid;
-    }
-
-    public static boolean isEpisodeUnlocked(long episodeId) {
-        Set<String> set = prefs.getStringSet(getUnlockedKey(), null);
-        return set != null && set.contains(String.valueOf(episodeId));
-    }
-
-    public static void unlockEpisode(long episodeId) {
-        String key = getUnlockedKey();
-        Set<String> set = new HashSet<>(prefs.getStringSet(key, new HashSet<>()));
-        set.add(String.valueOf(episodeId));
-        prefs.edit().putStringSet(key, set).apply();
+        EpisodeAdTempUnlock.clear();
+        if (appContext != null) {
+            AdSkipCache.clear(appContext);
+        }
     }
 }

@@ -1,16 +1,37 @@
 <template>
   <div>
     <el-card>
-      <div style="display:flex;justify-content:space-between;margin-bottom:16px">
-        <span style="font-size:14px;color:#999">管理首页广告轮播，支持跳转第三方链接或跳转到指定剧集播放</span>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <span style="font-size:14px;color:#999;flex:1;min-width:200px">管理首页广告轮播，支持跳转第三方链接或跳转到指定剧集播放</span>
         <el-button type="primary" @click="showDialog()">新增广告</el-button>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索 ID、标题、跳转链接或剧集 ID"
+          style="width:280px"
+          clearable
+          @keyup.enter="resetPageAndLoad"
+        />
+        <el-select v-model="filterLinkType" placeholder="跳转类型" clearable style="width:140px" @change="resetPageAndLoad">
+          <el-option label="全部类型" value="" />
+          <el-option label="外链" value="url" />
+          <el-option label="剧集" value="drama" />
+        </el-select>
+        <el-select v-model="filterStatus" placeholder="状态" clearable style="width:120px" @change="resetPageAndLoad">
+          <el-option label="全部状态" value="" />
+          <el-option label="启用" value="1" />
+          <el-option label="禁用" value="0" />
+        </el-select>
+        <el-button type="primary" @click="resetPageAndLoad">查询</el-button>
       </div>
 
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column label="图片" width="120">
           <template #default="{ row }">
-            <el-image v-if="row.image_url" :src="row.image_url" style="width:100px;height:56px;border-radius:4px" fit="cover" />
+            <el-image v-if="row.image_url" :src="resolveMediaUrl(row.image_url)" style="width:100px;height:56px;border-radius:4px" fit="cover" />
             <span v-else style="color:#999">无图</span>
           </template>
         </el-table-column>
@@ -80,7 +101,7 @@
           <div style="display:flex;align-items:center;gap:12px;width:100%">
             <el-input v-model="form.image_url" placeholder="图片 URL" style="flex:1" />
             <el-upload
-              action="/api/v1/admin/upload/image"
+              :action="adminUploadImageUrl"
               :headers="uploadHeaders"
               :show-file-list="false"
               accept="image/*"
@@ -90,9 +111,14 @@
               <el-button size="small" type="success">上传</el-button>
             </el-upload>
           </div>
+          <div
+            style="font-size:12px;color:var(--el-text-color-secondary);line-height:1.55;margin-top:6px;max-width:520px"
+          >
+            {{ IMAGE_HINT_BANNER }}
+          </div>
           <el-image
             v-if="form.image_url"
-            :src="form.image_url"
+            :src="resolveMediaUrl(form.image_url)"
             style="width:240px;height:96px;margin-top:8px;border-radius:6px;background:#f0f0f0"
             fit="cover"
           >
@@ -176,6 +202,8 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getBanners, createBanner, updateBanner, deleteBanner, getDramas } from '@/api'
+import { adminUploadImageUrl, resolveMediaUrl } from '@/config/api'
+import { IMAGE_HINT_BANNER } from '@/config/uploadHints'
 
 const uploadHeaders = computed(() => ({
   Authorization: 'Bearer ' + (localStorage.getItem('admin_token') || '')
@@ -186,6 +214,9 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 10
 const loading = ref(false)
+const keyword = ref('')
+const filterLinkType = ref<string>('')
+const filterStatus = ref<string>('')
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
@@ -272,10 +303,22 @@ function onImageUploadError() {
   ElMessage.error('图片上传失败，请检查网络')
 }
 
+function resetPageAndLoad() {
+  page.value = 1
+  loadData()
+}
+
 async function loadData() {
   loading.value = true
   try {
-    const res: any = await getBanners({ page: page.value, page_size: pageSize })
+    const params: Record<string, unknown> = {
+      page: page.value,
+      page_size: pageSize,
+      keyword: keyword.value.trim() || undefined,
+      link_type: filterLinkType.value || undefined,
+      status: filterStatus.value !== '' && filterStatus.value !== undefined ? filterStatus.value : undefined
+    }
+    const res: any = await getBanners(params)
     list.value = res.data?.list || []
     total.value = res.data?.total || 0
   } catch (e) {} finally { loading.value = false }

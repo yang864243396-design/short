@@ -6,6 +6,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -141,12 +142,19 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     private void bindDramaCard(DramaCardHolder h, Drama drama) {
         h.title.setText(drama.getTitle());
-        h.category.setText(drama.getCategory());
+        DramaCardTagsHelper.bindTags(h.tags, context, drama);
         h.heat.setText(drama.getHeatText() + "热度");
         h.status.setText(drama.getStatusText());
         h.desc.setText(drama.getDescription());
-        if (drama.getCoverUrl() != null) {
-            Glide.with(context).load(drama.getCoverUrl()).centerCrop().into(h.cover);
+        String cover = drama.getCoverUrl();
+        if (cover != null && !cover.isEmpty()) {
+            Glide.with(context).load(cover)
+                    .placeholder(R.drawable.bg_cover_placeholder)
+                    .error(R.drawable.bg_cover_placeholder)
+                    .centerCrop().into(h.cover);
+        } else {
+            Glide.with(context).clear(h.cover);
+            h.cover.setImageResource(R.drawable.bg_cover_placeholder);
         }
         h.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, PlayerActivity.class);
@@ -186,12 +194,13 @@ public class HomeAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     static class DramaCardHolder extends RecyclerView.ViewHolder {
         ImageView cover;
-        TextView title, category, heat, status, desc;
+        TextView title, heat, status, desc;
+        LinearLayout tags;
         DramaCardHolder(View v) {
             super(v);
             cover = v.findViewById(R.id.drama_cover);
             title = v.findViewById(R.id.drama_title);
-            category = v.findViewById(R.id.drama_category);
+            tags = v.findViewById(R.id.drama_tags);
             heat = v.findViewById(R.id.drama_heat);
             status = v.findViewById(R.id.drama_status);
             desc = v.findViewById(R.id.drama_desc);

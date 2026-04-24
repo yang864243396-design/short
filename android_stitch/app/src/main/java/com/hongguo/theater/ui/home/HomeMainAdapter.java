@@ -1,5 +1,6 @@
 package com.hongguo.theater.ui.home;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
@@ -38,6 +39,27 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     private final Context context;
     private final List<Object> items = new ArrayList<>();
 
+    private final Handler bannerHandler = new Handler(Looper.getMainLooper());
+    private Runnable bannerRunnable;
+
+    private MustWatchAdapter cachedRankingAdapter;
+    private LinearLayout activeIndicator;
+    private ViewPager2 activePager;
+    private final ViewPager2.OnPageChangeCallback indicatorCallback = new ViewPager2.OnPageChangeCallback() {
+        @Override
+        public void onPageSelected(int pos) {
+            if (activeIndicator == null) return;
+            for (int i = 0; i < activeIndicator.getChildCount(); i++) {
+                View dot = activeIndicator.getChildAt(i);
+                boolean active = (i == pos);
+                LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) dot.getLayoutParams();
+                lp.width = active ? dpToPx(16) : dpToPx(6);
+                dot.setLayoutParams(lp);
+                dot.setBackgroundResource(active ? R.drawable.indicator_active : R.drawable.indicator_inactive);
+            }
+        }
+    };
+
     private List<Banner> banners;
     private List<RankItem> rankings;
     private CategoryData categoryData;
@@ -48,8 +70,8 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         void onCategoryClick(String category);
     }
 
-    public HomeMainAdapter(Context context) {
-        this.context = context;
+    public HomeMainAdapter(Activity activity) {
+        this.context = activity;
     }
 
     public void setCategoryClickListener(OnCategoryClickListener listener) {
@@ -58,23 +80,73 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
 
     public void setBanners(List<Banner> banners) {
         this.banners = banners;
-        rebuildItems();
+        int pos = findPosition(BannerData.class);
+        if (banners != null && !banners.isEmpty()) {
+            if (pos >= 0) {
+                items.set(pos, new BannerData(banners));
+                notifyItemChanged(pos);
+            } else {
+                int insertAt = 0;
+                items.add(insertAt, new BannerData(banners));
+                notifyItemInserted(insertAt);
+            }
+        } else if (pos >= 0) {
+            items.remove(pos);
+            notifyItemRemoved(pos);
+        }
     }
 
     public void setRankings(List<RankItem> rankings) {
         this.rankings = rankings;
-        rebuildItems();
+        int pos = findPosition(RankingData.class);
+        if (rankings != null && !rankings.isEmpty()) {
+            if (pos >= 0) {
+                items.set(pos, new RankingData(rankings));
+                notifyItemChanged(pos);
+            } else {
+                int insertAt = findPosition(BannerData.class) >= 0 ? 1 : 0;
+                items.add(insertAt, new RankingData(rankings));
+                notifyItemInserted(insertAt);
+            }
+        } else if (pos >= 0) {
+            items.remove(pos);
+            notifyItemRemoved(pos);
+        }
     }
 
     public void setCategories(List<Category> categories, CategoryChipAdapter adapter) {
         this.categoryData = new CategoryData(categories, adapter);
-        rebuildItems();
+        int pos = findPosition(CategoryData.class);
+        if (pos >= 0) {
+            items.set(pos, categoryData);
+            notifyItemChanged(pos);
+        } else {
+            int insertAt = 0;
+            if (findPosition(BannerData.class) >= 0) insertAt++;
+            if (findPosition(RankingData.class) >= 0) insertAt++;
+            items.add(insertAt, categoryData);
+            notifyItemInserted(insertAt);
+        }
     }
 
     public void setDramas(List<Drama> dramas) {
-        items.removeIf(i -> i instanceof Drama);
-        if (dramas != null) items.addAll(dramas);
-        notifyDataSetChanged();
+        int firstDrama = -1;
+        int dramaCount = 0;
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i) instanceof Drama) {
+                if (firstDrama < 0) firstDrama = i;
+                dramaCount++;
+            }
+        }
+        if (firstDrama >= 0) {
+            items.subList(firstDrama, firstDrama + dramaCount).clear();
+            notifyItemRangeRemoved(firstDrama, dramaCount);
+        }
+        if (dramas != null && !dramas.isEmpty()) {
+            int insertAt = firstDrama >= 0 ? firstDrama : items.size();
+            items.addAll(insertAt, dramas);
+            notifyItemRangeInserted(insertAt, dramas.size());
+        }
     }
 
     public void addDramas(List<Drama> dramas) {
@@ -85,17 +157,11 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         }
     }
 
-    private void rebuildItems() {
-        List<Drama> existingDramas = new ArrayList<>();
-        for (Object o : items) {
-            if (o instanceof Drama) existingDramas.add((Drama) o);
+    private int findPosition(Class<?> type) {
+        for (int i = 0; i < items.size(); i++) {
+            if (type.isInstance(items.get(i))) return i;
         }
-        items.clear();
-        if (banners != null && !banners.isEmpty()) items.add(new BannerData(banners));
-        if (rankings != null && !rankings.isEmpty()) items.add(new RankingData(rankings));
-        if (categoryData != null) items.add(categoryData);
-        items.addAll(existingDramas);
-        notifyDataSetChanged();
+        return -1;
     }
 
     public int getCategoryPosition() {
@@ -145,16 +211,42 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     }
 
     @Override
+    public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
+        super.onViewRecycled(holder);
+    }
+
+    @Override
     public int getItemCount() { return items.size(); }
 
     // --- Banner ---
     private void bindBanner(BannerHolder h, BannerData data) {
-        BannerPagerAdapter adapter = new BannerPagerAdapter(context);
-        adapter.setData(data.banners);
-        h.pager.setAdapter(adapter);
+        int count = data.banners.size();
+
+        activeIndicator = h.indicator;
+
+        if (h.bannerAdapter == null) {
+            h.bannerAdapter = new BannerPagerAdapter(context);
+        }
+        if (h.pager.getAdapter() != h.bannerAdapter) {
+            h.pager.setAdapter(h.bannerAdapter);
+        }
+
+        if (h.pager != activePager) {
+            if (activePager != null) {
+                activePager.unregisterOnPageChangeCallback(indicatorCallback);
+            }
+            h.pager.registerOnPageChangeCallback(indicatorCallback);
+            activePager = h.pager;
+        }
+
+        h.bannerAdapter.setData(data.banners);
+
+        // 略增大离屏页，便于相邻轮播图提前走网络与解码（配合 Glide override 尺寸）
+        if (count > 0) {
+            h.pager.setOffscreenPageLimit(Math.max(1, Math.min(count, 3)));
+        }
 
         h.indicator.removeAllViews();
-        int count = data.banners.size();
         for (int i = 0; i < count; i++) {
             View dot = new View(context);
             int w = (i == 0) ? dpToPx(16) : dpToPx(6);
@@ -165,31 +257,19 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
             h.indicator.addView(dot);
         }
 
-        h.pager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
-            @Override
-            public void onPageSelected(int pos) {
-                for (int i = 0; i < h.indicator.getChildCount(); i++) {
-                    View dot = h.indicator.getChildAt(i);
-                    boolean active = (i == pos);
-                    LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) dot.getLayoutParams();
-                    lp.width = active ? dpToPx(16) : dpToPx(6);
-                    dot.setLayoutParams(lp);
-                    dot.setBackgroundResource(active ? R.drawable.indicator_active : R.drawable.indicator_inactive);
-                }
-            }
-        });
-
         if (count > 1) {
-            Handler handler = new Handler(Looper.getMainLooper());
-            Runnable auto = new Runnable() {
+            if (bannerRunnable != null) {
+                bannerHandler.removeCallbacks(bannerRunnable);
+            }
+            bannerRunnable = new Runnable() {
                 @Override
                 public void run() {
                     int next = (h.pager.getCurrentItem() + 1) % count;
                     h.pager.setCurrentItem(next, true);
-                    handler.postDelayed(this, 4000);
+                    bannerHandler.postDelayed(this, 5000);
                 }
             };
-            handler.postDelayed(auto, 4000);
+            bannerHandler.postDelayed(bannerRunnable, 5000);
         }
     }
 
@@ -199,8 +279,17 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         for (RankItem r : data.rankings) {
             if (r.getDrama() != null) dramas.add(r.getDrama());
         }
-        h.recycler.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false));
-        h.recycler.setAdapter(new MustWatchAdapter(context, dramas));
+        if (cachedRankingAdapter == null) {
+            cachedRankingAdapter = new MustWatchAdapter(context, dramas);
+            h.recycler.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false));
+            h.recycler.setAdapter(cachedRankingAdapter);
+        } else {
+            cachedRankingAdapter.setData(dramas);
+            if (h.recycler.getAdapter() != cachedRankingAdapter) {
+                h.recycler.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false));
+                h.recycler.setAdapter(cachedRankingAdapter);
+            }
+        }
         h.btnAll.setOnClickListener(v -> context.startActivity(new Intent(context, RankingActivity.class)));
     }
 
@@ -216,7 +305,7 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     @SuppressWarnings("unchecked")
     private void bindDrama(DramaHolder h, Drama drama) {
         h.title.setText(drama.getTitle());
-        h.category.setText(drama.getCategory());
+        DramaCardTagsHelper.bindTags(h.tags, context, drama);
         h.heat.setText(drama.getHeatText() + "热度");
         h.status.setText(drama.getStatusText());
         h.desc.setText(drama.getDescription());
@@ -227,6 +316,7 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
                     .error(R.drawable.bg_cover_placeholder)
                     .centerCrop().into(h.cover);
         } else {
+            Glide.with(context).clear(h.cover);
             h.cover.setImageResource(R.drawable.bg_cover_placeholder);
         }
         h.itemView.setOnClickListener(v -> {
@@ -242,8 +332,15 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
 
     // --- ViewHolders ---
     static class BannerHolder extends RecyclerView.ViewHolder {
-        ViewPager2 pager; LinearLayout indicator;
-        BannerHolder(View v) { super(v); pager = v.findViewById(R.id.banner_pager); indicator = v.findViewById(R.id.banner_indicator); }
+        ViewPager2 pager;
+        LinearLayout indicator;
+        BannerPagerAdapter bannerAdapter;
+
+        BannerHolder(View v) {
+            super(v);
+            pager = v.findViewById(R.id.banner_pager);
+            indicator = v.findViewById(R.id.banner_indicator);
+        }
     }
     static class RankingHolder extends RecyclerView.ViewHolder {
         RecyclerView recycler; View btnAll;
@@ -258,8 +355,18 @@ public class HomeMainAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         }
     }
     static class DramaHolder extends RecyclerView.ViewHolder {
-        ImageView cover; TextView title, category, heat, status, desc;
-        DramaHolder(View v) { super(v); cover = v.findViewById(R.id.drama_cover); title = v.findViewById(R.id.drama_title); category = v.findViewById(R.id.drama_category); heat = v.findViewById(R.id.drama_heat); status = v.findViewById(R.id.drama_status); desc = v.findViewById(R.id.drama_desc); }
+        ImageView cover;
+        TextView title, heat, status, desc;
+        LinearLayout tags;
+        DramaHolder(View v) {
+            super(v);
+            cover = v.findViewById(R.id.drama_cover);
+            title = v.findViewById(R.id.drama_title);
+            tags = v.findViewById(R.id.drama_tags);
+            heat = v.findViewById(R.id.drama_heat);
+            status = v.findViewById(R.id.drama_status);
+            desc = v.findViewById(R.id.drama_desc);
+        }
     }
 
     // --- Data wrappers ---

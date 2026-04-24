@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="alipays" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="alipay" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="weixin" />
+        </intent>
+        <package android:name="com.eg.android.AlipayGphone" />
+    </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -25,6 +41,7 @@
 
         <activity
             android:name=".ui.player.PlayerActivity"
+            android:launchMode="singleTop"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.HongguoTheater.Immersive" />
 
@@ -41,6 +58,14 @@
             android:name=".ui.auth.LoginActivity"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.wallet.WalletActivity"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".ui.wallet.WalletTransactionsActivity"
+            android:screenOrientation="portrait" />
 
     </application>
 </manifest>

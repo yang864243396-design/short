@@ -1,28 +1,41 @@
 package com.hongguo.theater.utils;
 
 import android.content.Context;
+import android.net.Uri;
 import android.util.Log;
 
 import androidx.annotation.OptIn;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.database.StandaloneDatabaseProvider;
 import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.datasource.cache.CacheDataSink;
 import androidx.media3.datasource.cache.CacheDataSource;
+import androidx.media3.datasource.cache.CacheWriter;
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor;
 import androidx.media3.datasource.cache.SimpleCache;
 
 import java.io.File;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @OptIn(markerClass = UnstableApi.class)
 public class ExoPlayerCache {
 
     private static final String TAG = "ExoPlayerCache";
-    private static final long MAX_CACHE_SIZE = 100 * 1024 * 1024;
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
+    private static final long MAX_CACHE_SIZE = 200 * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = Long.MAX_VALUE;
 
     private static SimpleCache cache;
+    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private static Future<?> currentPrecacheTask;
+    private static volatile CacheWriter activeCacheWriter;
 
     public static synchronized void init(Context context) {
         if (cache != null) return;
@@ -34,7 +47,7 @@ public class ExoPlayerCache {
     }
 
     private static void clearDirIfCorrupt(File dir) {
-        File marker = new File(dir, ".cache_v2");
+        File marker = new File(dir, ".cache_v4");
         if (dir.exists() && !marker.exists()) {
             Log.w(TAG, "Clearing old/corrupt cache");
             deleteRecursive(dir);
@@ -56,14 +69,35 @@ public class ExoPlayerCache {
         file.delete();
     }
 
+    public static DefaultHttpDataSource.Factory createHttpFactory() {
+        // 与 Retrofit 一致：无签 /stream/{id} 时服务端 OptionalAuth 需 Bearer；Redis 短时授权也按 user_id 判断
+        Map<String, String> headers = new HashMap<>();
+        if (PrefsManager.isLoggedIn()) {
+            String t = PrefsManager.getToken();
+            if (t != null && !t.isEmpty()) {
+                headers.put("Authorization", "Bearer " + t);
+            }
+        }
+        return new DefaultHttpDataSource.Factory()
+                .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(15_000)
+                .setReadTimeoutMs(60_000)
+                .setDefaultRequestProperties(headers.isEmpty() ? Collections.emptyMap() : headers);
+    }
+
+    /** 与全屏、Feed 共用：略增缓冲，减少弱网下断续卡顿 */
+    public static DefaultLoadControl createVideoLoadControl() {
+        return new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(20_000, 60_000, 2_500, 5_000)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build();
+    }
+
     public static DataSource.Factory getDataSourceFactory(Context context) {
         init(context);
-        DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(true);
-
         return new CacheDataSource.Factory()
                 .setCache(cache)
-                .setUpstreamDataSourceFactory(httpFactory)
+                .setUpstreamDataSourceFactory(createHttpFactory())
                 .setCacheWriteDataSinkFactory(
                         () -> new CacheDataSink(cache, MAX_FILE_SIZE))
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
@@ -73,23 +107,18 @@ public class ExoPlayerCache {
         cancelPrecache();
         init(context);
 
-        precacheTask = executor.submit(() -> {
+        currentPrecacheTask = executor.submit(() -> {
             try {
-                DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
-                        .setAllowCrossProtocolRedirects(true);
-
                 CacheDataSource dataSource = new CacheDataSource(
                         cache,
-                        httpFactory.createDataSource(),
+                        createHttpFactory().createDataSource(),
                         null,
                         new CacheDataSink(cache, MAX_FILE_SIZE),
                         CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
                         null);
 
-                androidx.media3.datasource.DataSpec dataSpec =
-                        new androidx.media3.datasource.DataSpec(android.net.Uri.parse(url));
-                activeCacheWriter = new androidx.media3.datasource.cache.CacheWriter(
-                        dataSource, dataSpec, null, null);
+                DataSpec dataSpec = new DataSpec(Uri.parse(url));
+                activeCacheWriter = new CacheWriter(dataSource, dataSpec, null, null);
                 activeCacheWriter.cache();
                 Log.d(TAG, "Precache complete: " + url);
             } catch (Exception e) {
@@ -102,19 +131,14 @@ public class ExoPlayerCache {
         });
     }
 
-    private static final java.util.concurrent.ExecutorService executor =
-            java.util.concurrent.Executors.newSingleThreadExecutor();
-    private static java.util.concurrent.Future<?> precacheTask;
-    private static volatile androidx.media3.datasource.cache.CacheWriter activeCacheWriter;
-
     public static void cancelPrecache() {
-        androidx.media3.datasource.cache.CacheWriter writer = activeCacheWriter;
+        CacheWriter writer = activeCacheWriter;
         if (writer != null) {
             writer.cancel();
         }
-        if (precacheTask != null) {
-            precacheTask.cancel(true);
-            precacheTask = null;
+        if (currentPrecacheTask != null) {
+            currentPrecacheTask.cancel(true);
+            currentPrecacheTask = null;
         }
     }
 

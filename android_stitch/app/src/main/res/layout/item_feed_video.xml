@@ -94,28 +94,65 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="60dp"
             android:orientation="vertical"
-            android:paddingHorizontal="16dp">
+            android:paddingHorizontal="16dp"
+            android:paddingTop="8dp">
+
+            <TextView
+                android:id="@+id/feed_ranking_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/bg_player_ranking_badge"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.02"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="5dp"
+                android:textColor="@color/player_ranking_chip_text"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:shadowColor="@color/desc_inline_action_shadow"
+                android:shadowDx="0"
+                android:shadowDy="0"
+                android:shadowRadius="3"
+                android:visibility="gone" />
 
             <!-- Drama title -->
             <TextView
                 android:id="@+id/feed_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="0dp"
                 android:maxLines="1"
                 android:ellipsize="end"
                 android:textColor="@color/white"
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
+            <HorizontalScrollView
+                android:id="@+id/feed_tag_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:fadingEdgeLength="12dp"
+                android:fillViewport="false"
+                android:overScrollMode="never"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/feed_tag_row"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
+
             <!-- Drama description -->
             <TextView
                 android:id="@+id/feed_desc"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:ellipsize="end"
-                android:maxLines="1"
                 android:textColor="#CCFFFFFF"
                 android:textSize="13sp" />
 

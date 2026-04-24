@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.hongguo.theater.R;
 import com.hongguo.theater.model.Episode;
+import com.hongguo.theater.utils.EpisodeAdTempUnlock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,11 +65,8 @@ public class EpisodeGridAdapter extends RecyclerView.Adapter<EpisodeGridAdapter.
         holder.number.setText(String.valueOf(ep.getEpisodeNumber()));
         holder.itemView.setSelected(globalPos == currentIndex);
 
-        if (!ep.isFree()) {
-            holder.lockIcon.setVisibility(View.VISIBLE);
-        } else {
-            holder.lockIcon.setVisibility(View.GONE);
-        }
+        boolean locked = !ep.isFree() && !ep.isCoinUnlocked() && !EpisodeAdTempUnlock.isActive(ep.getId());
+        holder.lockIcon.setVisibility(locked ? View.VISIBLE : View.GONE);
 
         holder.itemView.setOnClickListener(v -> {
             if (listener != null) listener.onClick(globalPos);

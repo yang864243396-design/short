@@ -1,214 +1,282 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/black">
+    android:background="@color/black"
+    android:orientation="vertical">
 
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/player_view"
+    <!-- 仅视频 + 叠层控件；底部不含进度条与选集 -->
+    <FrameLayout
+        android:id="@+id/layout_video_area"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:show_buffering="when_playing"
-        app:use_controller="false" />
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
-    <!-- Center play/pause icon overlay -->
-    <ImageView
-        android:id="@+id/iv_center_play"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:layout_gravity="center"
-        android:alpha="0"
-        android:src="@drawable/ic_play"
-        android:contentDescription="play/pause" />
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/player_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:show_buffering="when_playing"
+            app:use_controller="false" />
 
-    <!-- Top bar -->
-    <LinearLayout
-        android:id="@+id/layout_top_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
+        <!-- 解锁广告：图片类型全屏展示（盖在 PlayerView 上） -->
         <ImageView
-            android:id="@+id/btn_back"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:padding="12dp"
-            android:src="@drawable/ic_back"
-            android:contentDescription="back" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <TextView
-            android:id="@+id/tv_ad_label"
-            android:layout_width="wrap_content"
-            android:layout_height="28dp"
-            android:background="@drawable/bg_tag"
-            android:gravity="center"
-            android:paddingHorizontal="12dp"
-            android:text="广告"
-            android:textColor="@color/white"
-            android:textSize="12sp"
+            android:id="@+id/iv_ad_creative"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="ad"
+            android:scaleType="centerCrop"
             android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/btn_close_ad"
-            android:layout_width="wrap_content"
-            android:layout_height="28dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/bg_feed_episodes_btn"
-            android:gravity="center"
-            android:paddingHorizontal="12dp"
-            android:text="关闭广告"
-            android:textColor="@color/white"
-            android:textSize="12sp"
-            android:visibility="gone" />
-    </LinearLayout>
-
-    <!-- Right-side buttons -->
-    <LinearLayout
-        android:id="@+id/layout_right_buttons"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="end|center_vertical"
-        android:layout_marginEnd="8dp"
-        android:gravity="center_horizontal"
-        android:orientation="vertical">
-
         <ImageView
-            android:id="@+id/btn_like"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:padding="10dp"
-            android:src="@drawable/ic_favorite"
-            android:contentDescription="like" />
-        <TextView
-            android:id="@+id/tv_like_count"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:textSize="11sp"
-            android:gravity="center" />
-
-        <ImageView
-            android:id="@+id/btn_comment"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginTop="16dp"
-            android:padding="10dp"
-            android:src="@drawable/ic_comment"
-            android:contentDescription="comment" />
-        <TextView
-            android:id="@+id/tv_comment_count"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:textSize="11sp"
-            android:gravity="center" />
-
-        <ImageView
-            android:id="@+id/btn_collect"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginTop="16dp"
-            android:padding="10dp"
-            android:src="@drawable/ic_bookmark"
-            android:contentDescription="collect" />
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/collect"
-            android:textColor="@color/white"
-            android:textSize="11sp"
-            android:gravity="center" />
-
-        <ImageView
-            android:id="@+id/btn_share"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginTop="16dp"
-            android:padding="10dp"
-            android:src="@drawable/ic_share"
-            android:contentDescription="share" />
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/share"
-            android:textColor="@color/white"
-            android:textSize="11sp"
-            android:gravity="center" />
-    </LinearLayout>
-
-    <!-- Bottom info -->
-    <LinearLayout
-        android:id="@+id/layout_bottom_info"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:orientation="vertical">
+            android:id="@+id/iv_center_play"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="center"
+            android:alpha="0"
+            android:contentDescription="play/pause"
+            android:src="@drawable/ic_play" />
 
         <LinearLayout
+            android:id="@+id/layout_top_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="56dp"
-            android:orientation="vertical"
-            android:paddingHorizontal="16dp">
+            android:layout_gravity="top"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <ImageView
+                android:id="@+id/btn_back"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="back"
+                android:padding="12dp"
+                android:src="@drawable/ic_back" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
 
             <TextView
-                android:id="@+id/tv_title"
+                android:id="@+id/tv_ad_label"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="28dp"
+                android:background="@drawable/bg_tag"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="广告"
                 android:textColor="@color/white"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:textSize="12sp"
+                android:visibility="gone" />
 
             <TextView
-                android:id="@+id/tv_desc"
+                android:id="@+id/btn_close_ad"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_feed_episodes_btn"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="关闭广告"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_right_buttons"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|center_vertical"
+            android:layout_marginEnd="8dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/btn_like"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="like"
+                android:padding="10dp"
+                android:src="@drawable/ic_favorite" />
+
+            <TextView
+                android:id="@+id/tv_like_count"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:ellipsize="end"
-                android:maxLines="2"
-                android:textColor="#BBFFFFFF"
-                android:textSize="13sp" />
+                android:gravity="center"
+                android:textColor="@color/white"
+                android:textSize="11sp" />
+
+            <ImageView
+                android:id="@+id/btn_comment"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginTop="16dp"
+                android:contentDescription="comment"
+                android:padding="10dp"
+                android:src="@drawable/ic_comment" />
+
+            <TextView
+                android:id="@+id/tv_comment_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:textColor="@color/white"
+                android:textSize="11sp" />
+
+            <ImageView
+                android:id="@+id/btn_collect"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginTop="16dp"
+                android:contentDescription="collect"
+                android:padding="10dp"
+                android:src="@drawable/ic_bookmark" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/collect"
+                android:textColor="@color/white"
+                android:textSize="11sp" />
+
+            <ImageView
+                android:id="@+id/btn_share"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginTop="16dp"
+                android:contentDescription="share"
+                android:padding="10dp"
+                android:src="@drawable/ic_share" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/share"
+                android:textColor="@color/white"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_bottom_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/layout_intro_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="56dp"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp">
+
+                <TextView
+                    android:id="@+id/tv_ranking_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:background="@drawable/bg_player_ranking_badge"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.02"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="5dp"
+                    android:shadowColor="@color/desc_inline_action_shadow"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="3"
+                    android:textColor="@color/player_ranking_chip_text"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/tv_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <ScrollView
+                    android:id="@+id/scroll_desc"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fadeScrollbars="false"
+                    android:fillViewport="false"
+                    android:overScrollMode="never"
+                    android:scrollbars="none">
+
+                    <TextView
+                        android:id="@+id/tv_desc"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:maxLines="1"
+                        android:textColor="#BBFFFFFF"
+                        android:textSize="13sp" />
+                </ScrollView>
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tv_episode_info"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="56dp"
                 android:layout_marginTop="4dp"
+                android:paddingHorizontal="16dp"
                 android:textColor="#99FFFFFF"
                 android:textSize="12sp" />
         </LinearLayout>
+    </FrameLayout>
 
-        <!-- Progress bar -->
+    <!-- 常驻底部：进度条贴顶作分界，下接选集；总高约等于选集行（紧凑红果式） -->
+    <LinearLayout
+        android:id="@+id/layout_player_dock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_player_dock"
+        android:orientation="vertical"
+        android:paddingBottom="6dp">
+
+        <!-- 功能区顶部 = 细进度条；替代原顶部分割线与按钮上边框 -->
         <SeekBar
             android:id="@+id/seek_bar"
             android:layout_width="match_parent"
-            android:layout_height="32dp"
-            android:layout_marginTop="8dp"
-            android:paddingHorizontal="12dp"
+            android:layout_height="12dp"
+            android:layout_marginTop="0dp"
             android:max="1000"
+            android:maxHeight="2dp"
+            android:minHeight="2dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:progress="0"
-            android:progressDrawable="@drawable/seekbar_progress"
-            android:thumb="@drawable/seekbar_thumb"
-            android:splitTrack="false" />
+            android:progressDrawable="@drawable/seekbar_player_progress"
+            android:splitTrack="false"
+            android:thumb="@drawable/seekbar_player_thumb" />
 
         <TextView
             android:id="@+id/btn_episodes"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/bg_feed_episodes_btn"
+            android:layout_height="40dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="0dp"
+            android:background="@drawable/bg_player_episodes_btn"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            android:includeFontPadding="false"
+            android:letterSpacing="0.01"
+            android:paddingHorizontal="12dp"
+            android:textColor="@color/player_episodes_btn_text"
+            android:textSize="13sp" />
     </LinearLayout>
-</FrameLayout>
+</LinearLayout>

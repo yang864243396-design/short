@@ -1,10 +1,17 @@
 <template>
   <div>
     <el-card>
-      <div style="display:flex;gap:12px;margin-bottom:16px">
-        <el-input v-model="dramaId" placeholder="剧集ID" style="width:200px" @keyup.enter="loadData" />
-        <el-button type="primary" @click="loadData">查询</el-button>
-        <el-button type="success" @click="showDialog()">新增分集</el-button>
+      <div style="margin-bottom:16px">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <el-input v-model="dramaId" placeholder="剧集ID" style="width:200px" @keyup.enter="loadData" />
+          <el-button type="primary" @click="loadData">查询</el-button>
+          <el-button type="success" @click="showDialog()">新增分集</el-button>
+        </div>
+        <div
+          style="font-size:12px;color:var(--el-text-color-secondary);line-height:1.55;margin-top:8px;max-width:720px"
+        >
+          {{ VIDEO_HINT_EPISODE }}
+        </div>
       </div>
 
       <el-table :data="list" v-loading="loading" stripe>
@@ -17,11 +24,16 @@
             <el-tag :type="row.is_free ? 'success' : 'info'" size="small">{{ row.is_free ? '是' : '否' }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="unlock_coins" label="解锁金币" width="96">
+          <template #default="{ row }">
+            {{ row.is_free ? '—' : row.unlock_coins ?? 0 }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" text size="small" @click="showDialog(row)">编辑</el-button>
             <el-upload
-              :action="'/api/v1/admin/upload/video'"
+              :action="adminUploadVideoUrl"
               :headers="{ Authorization: 'Bearer ' + token }"
               :show-file-list="false"
               :on-success="(res: any) => onVideoUploaded(row, res)"
@@ -52,6 +64,10 @@
         <el-form-item label="集数"><el-input-number v-model="form.episode_number" :min="1" /></el-form-item>
         <el-form-item label="标题"><el-input v-model="form.title" /></el-form-item>
         <el-form-item label="免费"><el-switch v-model="form.is_free" /></el-form-item>
+        <el-form-item v-if="!form.is_free" label="观看金币">
+          <el-input-number v-model="form.unlock_coins" :min="1" :step="1" style="width:100%" />
+          <div style="font-size:12px;color:var(--el-text-color-secondary);margin-top:4px">非免费集必填</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -65,6 +81,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getEpisodes, createEpisode, updateEpisode, deleteEpisode } from '@/api'
+import { adminUploadVideoUrl } from '@/config/api'
+import { VIDEO_HINT_EPISODE } from '@/config/uploadHints'
 
 const token = localStorage.getItem('admin_token') || ''
 const list = ref<any[]>([])
@@ -76,7 +94,7 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 
-const form = reactive({ drama_id: 0, episode_number: 1, title: '', is_free: true })
+const form = reactive({ drama_id: 0, episode_number: 1, title: '', is_free: false, unlock_coins: 10 })
 
 function showDialog(row?: any) {
   if (row) {
@@ -84,7 +102,7 @@ function showDialog(row?: any) {
     Object.assign(form, row)
   } else {
     editingId.value = null
-    Object.assign(form, { drama_id: Number(dramaId.value) || 0, episode_number: 1, title: '', is_free: true })
+    Object.assign(form, { drama_id: Number(dramaId.value) || 0, episode_number: 1, title: '', is_free: false, unlock_coins: 10 })
   }
   dialogVisible.value = true
 }
@@ -99,14 +117,23 @@ async function loadData() {
 }
 
 async function handleSave() {
-  if (editingId.value) {
-    await updateEpisode(editingId.value, form)
-  } else {
-    await createEpisode(form)
+  if (!form.is_free) {
+    const c = Number(form.unlock_coins)
+    if (!Number.isFinite(c) || c < 1) {
+      ElMessage.error('非免费分集必须设置观看金币（至少 1）')
+      return
+    }
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  loadData()
+  try {
+    if (editingId.value) {
+      await updateEpisode(editingId.value, form)
+    } else {
+      await createEpisode(form)
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    loadData()
+  } catch (e) {}
 }
 
 async function handleDelete(id: number) {

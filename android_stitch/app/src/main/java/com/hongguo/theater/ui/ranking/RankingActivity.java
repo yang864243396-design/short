@@ -1,5 +1,6 @@
 package com.hongguo.theater.ui.ranking;
 
+import android.content.Intent;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
@@ -20,6 +21,9 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 public class RankingActivity extends AppCompatActivity {
+
+    /** 打开时选中对应 Tab：{@code hot} / {@code rising} / {@code rating} */
+    public static final String EXTRA_INITIAL_TYPE = "initial_ranking_type";
 
     private RecyclerView recyclerView;
     private RankingAdapter adapter;
@@ -57,7 +61,30 @@ public class RankingActivity extends AppCompatActivity {
             @Override public void onTabReselected(TabLayout.Tab tab) {}
         });
 
+        int startTab = tabIndexFromType(getIntent());
+        applyTypeForTabIndex(startTab);
+        TabLayout.Tab tab = tabLayout.getTabAt(startTab);
+        if (tab != null) {
+            tabLayout.selectTab(tab);
+        }
+        // 部分机型上 selectTab 与默认 Tab 相同时可能不回调，保证首屏有数据（可能与 onTabSelected 各请求一次）
         loadRankings();
+    }
+
+    private void applyTypeForTabIndex(int index) {
+        switch (index) {
+            case 1: currentType = "rising"; break;
+            case 2: currentType = "rating"; break;
+            default: currentType = "hot"; break;
+        }
+    }
+
+    private static int tabIndexFromType(Intent intent) {
+        if (intent == null) return 0;
+        String t = intent.getStringExtra(EXTRA_INITIAL_TYPE);
+        if ("rising".equals(t)) return 1;
+        if ("rating".equals(t)) return 2;
+        return 0;
     }
 
     private void loadRankings() {

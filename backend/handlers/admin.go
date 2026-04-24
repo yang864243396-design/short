@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -9,13 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 	"short-drama-backend/database"
 	"short-drama-backend/middleware"
 	"short-drama-backend/models"
 	"short-drama-backend/utils"
+
+	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 func AdminLogin(c *gin.Context) {
@@ -65,7 +67,7 @@ func AdminLogin(c *gin.Context) {
 
 func AdminDashboard(c *gin.Context) {
 	var userCount, dramaCount, episodeCount, commentCount int64
-	database.DB.Model(&models.AppUser{}).Count(&userCount)
+	database.DB.Model(&models.AppUser{}).Where("deleted_at IS NULL").Count(&userCount)
 	database.DB.Model(&models.Drama{}).Count(&dramaCount)
 	database.DB.Model(&models.Episode{}).Count(&episodeCount)
 	database.DB.Model(&models.Comment{}).Count(&commentCount)
@@ -80,16 +82,45 @@ func AdminDashboard(c *gin.Context) {
 
 // --- Drama Admin CRUD ---
 
+// adminDramaInput 创建剧集用：enabled 缺省时默认为下架（新建默认不对用户端展示）
+type adminDramaInput struct {
+	Title         string  `json:"title"`
+	CoverURL      string  `json:"cover_url"`
+	Description   string  `json:"description"`
+	Category      string  `json:"category"`
+	TotalEpisodes int     `json:"total_episodes"`
+	Rating        float32 `json:"rating"`
+	Heat          int64   `json:"heat"`
+	Status        string  `json:"status"`
+	Enabled       *bool   `json:"enabled"`
+}
+
 func AdminGetDramas(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	keyword := c.Query("keyword")
+	statusFilter := c.Query("status")
+	enabledStr := strings.ToLower(strings.TrimSpace(c.Query("enabled")))
 
 	var dramas []models.Drama
 	var total int64
 	query := database.DB.Model(&models.Drama{})
 	if keyword != "" {
-		query = query.Where("title LIKE ?", "%"+keyword+"%")
+		kw := strings.TrimSpace(keyword)
+		if id, err := strconv.ParseUint(kw, 10, 64); err == nil && id > 0 {
+			query = query.Where("id = ? OR title LIKE ?", uint(id), "%"+kw+"%")
+		} else {
+			query = query.Where("title LIKE ?", "%"+kw+"%")
+		}
+	}
+	if statusFilter != "" {
+		query = query.Where("status = ?", statusFilter)
+	}
+	switch enabledStr {
+	case "1", "true", "yes":
+		query = query.Where("enabled = ?", true)
+	case "0", "false", "no":
+		query = query.Where("enabled = ?", false)
 	}
 	query.Count(&total)
 	query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&dramas)
@@ -98,10 +129,25 @@ func AdminGetDramas(c *gin.Context) {
 }
 
 func AdminCreateDrama(c *gin.Context) {
-	var drama models.Drama
-	if err := c.ShouldBindJSON(&drama); err != nil {
+	var in adminDramaInput
+	if err := c.ShouldBindJSON(&in); err != nil {
 		utils.BadRequest(c, "参数错误")
 		return
+	}
+	drama := models.Drama{
+		Title:         in.Title,
+		CoverURL:      in.CoverURL,
+		Description:   in.Description,
+		Category:      in.Category,
+		TotalEpisodes: in.TotalEpisodes,
+		Rating:        in.Rating,
+		Heat:          in.Heat,
+		Status:        in.Status,
+	}
+	if in.Enabled != nil {
+		drama.Enabled = *in.Enabled
+	} else {
+		drama.Enabled = false
 	}
 	database.DB.Create(&drama)
 	utils.Success(c, drama)
@@ -129,6 +175,7 @@ func syncDramaCache(drama models.Drama) {
 	utils.CacheDelete("drama:" + fmt.Sprintf("%d", drama.ID))
 	utils.CacheDelete("home:page")
 	utils.CacheDelete("hot_dramas")
+	utils.CacheDelete("banners:active")
 
 	if !drama.Enabled {
 		removeDramaFromRankingCache(drama.ID)
@@ -139,7 +186,7 @@ func syncDramaCache(drama models.Drama) {
 			"cover_url":      drama.CoverURL,
 			"description":    drama.Description,
 			"category":       drama.Category,
-			"tags":           drama.Tags,
+			"category_list":  utils.ParseCategoryList(drama.Category),
 			"total_episodes": drama.TotalEpisodes,
 			"rating":         drama.Rating,
 			"heat":           drama.Heat,
@@ -157,6 +204,17 @@ func AdminDeleteDrama(c *gin.Context) {
 	go removeDramaFromRankingCache(dramaID)
 
 	utils.Success(c, nil)
+}
+
+func syncDramaEpisodeCount(dramaID uint) {
+	var count int64
+	database.DB.Model(&models.Episode{}).Where("drama_id = ?", dramaID).Count(&count)
+	database.DB.Model(&models.Drama{}).Where("id = ?", dramaID).Update("total_episodes", count)
+
+	var drama models.Drama
+	if database.DB.First(&drama, dramaID).Error == nil {
+		go syncDramaCache(drama)
+	}
 }
 
 func parseAdminUint(s string) uint {
@@ -197,6 +255,19 @@ func removeDramaFromRankingCache(dramaID uint) {
 
 // --- Episode Admin CRUD ---
 
+func normalizeAdminEpisodeCommerce(ep *models.Episode) {
+	if ep.IsFree {
+		ep.UnlockCoins = 0
+	}
+}
+
+func validateAdminEpisodeCommerce(ep *models.Episode) bool {
+	if ep.IsFree {
+		return true
+	}
+	return ep.UnlockCoins >= 1
+}
+
 func AdminGetEpisodes(c *gin.Context) {
 	dramaID := c.Query("drama_id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -227,7 +298,14 @@ func AdminCreateEpisode(c *gin.Context) {
 		return
 	}
 
+	normalizeAdminEpisodeCommerce(&episode)
+	if !validateAdminEpisodeCommerce(&episode) {
+		utils.BadRequest(c, "非免费分集必须设置观看金币（至少 1）")
+		return
+	}
+
 	database.DB.Create(&episode)
+	syncDramaEpisodeCount(episode.DramaID)
 	utils.Success(c, episode)
 }
 
@@ -249,13 +327,25 @@ func AdminUpdateEpisode(c *gin.Context) {
 		return
 	}
 
+	normalizeAdminEpisodeCommerce(&episode)
+	if !validateAdminEpisodeCommerce(&episode) {
+		utils.BadRequest(c, "非免费分集必须设置观看金币（至少 1）")
+		return
+	}
+
 	database.DB.Save(&episode)
 	utils.Success(c, episode)
 }
 
 func AdminDeleteEpisode(c *gin.Context) {
 	id := c.Param("id")
-	database.DB.Delete(&models.Episode{}, id)
+	var episode models.Episode
+	if err := database.DB.First(&episode, id).Error; err == nil {
+		database.DB.Delete(&models.Episode{}, id)
+		syncDramaEpisodeCount(episode.DramaID)
+	} else {
+		database.DB.Delete(&models.Episode{}, id)
+	}
 	utils.Success(c, nil)
 }
 
@@ -270,12 +360,24 @@ func AdminGetUsers(c *gin.Context) {
 	var total int64
 	query := database.DB.Model(&models.AppUser{})
 	if keyword != "" {
-		query = query.Where("username LIKE ? OR nickname LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
+		kw := "%" + keyword + "%"
+		query = query.Where("username LIKE ? OR nickname LIKE ? OR registered_email LIKE ?", kw, kw, kw)
 	}
 	query.Count(&total)
 	query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&users)
 
 	utils.Success(c, gin.H{"list": users, "total": total, "page": page, "page_size": pageSize})
+}
+
+// AdminGetAppUser 会员详情（不含密码）
+func AdminGetAppUser(c *gin.Context) {
+	id := c.Param("id")
+	var user models.AppUser
+	if err := database.DB.First(&user, id).Error; err != nil {
+		utils.BadRequest(c, "用户不存在")
+		return
+	}
+	utils.Success(c, user)
 }
 
 func AdminUpdateUser(c *gin.Context) {
@@ -285,15 +387,128 @@ func AdminUpdateUser(c *gin.Context) {
 		utils.BadRequest(c, "用户不存在")
 		return
 	}
+	if user.DeletedAt != nil {
+		utils.BadRequest(c, "用户已注销，无法修改")
+		return
+	}
 	var req struct {
-		Status int `json:"status"`
+		Status             *int            `json:"status"`
+		Nickname           *string         `json:"nickname"`
+		Phone              *string         `json:"phone"`
+		Avatar             *string         `json:"avatar"`
+		Username           *string         `json:"username"`
+		Password           *string         `json:"password"`
+		AdSkipExpiresAtRaw json.RawMessage `json:"ad_skip_expires_at"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, "参数错误")
 		return
 	}
-	database.DB.Model(&user).Update("status", req.Status)
+	updates := map[string]interface{}{}
+	if req.Status != nil {
+		if *req.Status != 0 && *req.Status != 1 {
+			utils.BadRequest(c, "状态仅支持 0（禁用）或 1（正常）")
+			return
+		}
+		updates["status"] = *req.Status
+	}
+	if req.Nickname != nil {
+		updates["nickname"] = *req.Nickname
+	}
+	if req.Phone != nil {
+		updates["phone"] = *req.Phone
+	}
+	if req.Avatar != nil {
+		updates["avatar"] = *req.Avatar
+	}
+	if req.Username != nil {
+		n := strings.TrimSpace(*req.Username)
+		if n == "" {
+			utils.BadRequest(c, "用户名不能为空")
+			return
+		}
+		if n != user.Username {
+			var other models.AppUser
+			if err := database.DB.Where("username = ? AND id != ? AND deleted_at IS NULL", n, user.ID).First(&other).Error; err == nil {
+				utils.BadRequest(c, "用户名已被占用")
+				return
+			}
+			updates["username"] = n
+			if reg := strings.TrimSpace(user.RegisteredEmail); reg == "" || reg == user.Username {
+				updates["registered_email"] = n
+			}
+		}
+	}
+	if req.Password != nil && strings.TrimSpace(*req.Password) != "" {
+		p := strings.TrimSpace(*req.Password)
+		if len(p) < 6 {
+			utils.BadRequest(c, "密码至少 6 位")
+			return
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+		if err != nil {
+			utils.ServerError(c, "密码处理失败")
+			return
+		}
+		updates["password_hash"] = string(hash)
+	}
+	if len(req.AdSkipExpiresAtRaw) > 0 {
+		raw := strings.TrimSpace(string(req.AdSkipExpiresAtRaw))
+		if raw == "null" {
+			updates["ad_skip_expires_at"] = nil
+		} else {
+			var t time.Time
+			if err := json.Unmarshal(req.AdSkipExpiresAtRaw, &t); err != nil {
+				utils.BadRequest(c, "免广告到期时间格式错误，请使用 ISO8601")
+				return
+			}
+			updates["ad_skip_expires_at"] = t
+		}
+	}
+	if len(updates) == 0 {
+		utils.BadRequest(c, "没有要更新的字段")
+		return
+	}
+	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
+		utils.ServerError(c, "更新失败")
+		return
+	}
+	database.DB.First(&user, id)
 	utils.Success(c, user)
+}
+
+// AdminDeleteAppUser 软删除 App 用户：不可再登录，关联数据保留；原登录名改为占位以释放邮箱供新用户注册。
+func AdminDeleteAppUser(c *gin.Context) {
+	id := c.Param("id")
+	var user models.AppUser
+	if err := database.DB.First(&user, id).Error; err != nil {
+		utils.BadRequest(c, "用户不存在")
+		return
+	}
+	if user.DeletedAt != nil {
+		utils.BadRequest(c, "用户已注销")
+		return
+	}
+	now := time.Now()
+	reg := strings.TrimSpace(user.RegisteredEmail)
+	if reg == "" {
+		reg = strings.TrimSpace(user.Username)
+	}
+	placeholder := fmt.Sprintf("d%d_%d", user.ID, now.UnixNano())
+	if len(placeholder) > 50 {
+		placeholder = placeholder[:50]
+	}
+	updates := map[string]interface{}{
+		"deleted_at":       now,
+		"registered_email": reg,
+		"username":         placeholder,
+		"status":           0,
+	}
+	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
+		utils.ServerError(c, "注销失败")
+		return
+	}
+	utils.Success(c, nil)
 }
 
 // --- Admin Management ---
@@ -454,10 +669,14 @@ func AdminDeleteComment(c *gin.Context) {
 	id := c.Param("id")
 	var comment models.Comment
 	if database.DB.First(&comment, id).Error == nil {
+		var childCount int64
+		database.DB.Model(&models.Comment{}).Where("parent_id = ?", comment.ID).Count(&childCount)
+		database.DB.Where("parent_id = ?", comment.ID).Delete(&models.Comment{})
 		database.DB.Delete(&comment)
+		dec := 1 + int(childCount)
 		go func() {
 			database.DB.Model(&models.Episode{}).Where("id = ?", comment.EpisodeID).
-				UpdateColumn("comment_count", gorm.Expr("GREATEST(comment_count - 1, 0)"))
+				UpdateColumn("comment_count", gorm.Expr("GREATEST(comment_count - ?, 0)", dec))
 		}()
 	}
 	utils.Success(c, nil)
@@ -548,24 +767,43 @@ func UploadImage(c *gin.Context) {
 	}
 	defer file.Close()
 
+	data, err := io.ReadAll(io.LimitReader(file, utils.MaxImageUploadBytes+1))
+	if err != nil {
+		utils.ServerError(c, "读取文件失败")
+		return
+	}
+	if len(data) > utils.MaxImageUploadBytes {
+		utils.BadRequest(c, "图片过大，请压缩后重试（最大15MB）")
+		return
+	}
+
 	uploadDir := "./uploads/images"
 	os.MkdirAll(uploadDir, os.ModePerm)
 
-	filename := fmt.Sprintf("%d_%s", time.Now().UnixMilli(), header.Filename)
-	dst := filepath.Join(uploadDir, filename)
+	var outData []byte
+	var filename string
+	if jpegData, ok := utils.NormalizeImageUpload(data, utils.ImageUploadMaxSide); ok {
+		outData = jpegData
+		filename = fmt.Sprintf("%d.jpg", time.Now().UnixMilli())
+	} else {
+		outData = data
+		safe := filepath.Base(header.Filename)
+		if safe == "" || safe == "." || safe == ".." {
+			safe = "upload.bin"
+		}
+		filename = fmt.Sprintf("%d_%s", time.Now().UnixMilli(), safe)
+	}
 
-	out, err := os.Create(dst)
-	if err != nil {
+	dst := filepath.Join(uploadDir, filename)
+	if err := os.WriteFile(dst, outData, 0644); err != nil {
 		utils.ServerError(c, "保存文件失败")
 		return
 	}
-	defer out.Close()
-	io.Copy(out, file)
 
 	utils.Success(c, gin.H{
 		"url":      "/uploads/images/" + filename,
 		"filename": filename,
-		"size":     header.Size,
+		"size":     int64(len(outData)),
 	})
 }
 

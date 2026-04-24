@@ -14,6 +14,9 @@ type DramaStats struct {
 	Views7Day      int64   `json:"views_7day" gorm:"column:views_7day;default:0"`
 	ViewsPrev7Day  int64   `json:"views_prev_7day" gorm:"column:views_prev_7day;default:0"`
 	RisingScore    float64 `json:"rising_score" gorm:"column:rising_score;default:0"`
+	// HeatFromComments / HeatFromCollects：与 dramas.heat 上「评论 +100、首次收藏 +100」规则一致，供好评榜排序
+	HeatFromComments int64 `json:"heat_from_comments" gorm:"column:heat_from_comments;default:0"`
+	HeatFromCollects int64 `json:"heat_from_collects" gorm:"column:heat_from_collects;default:0"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
@@ -24,6 +27,7 @@ type DailySnapshot struct {
 	Views     int64     `json:"views" gorm:"default:0"`
 	Likes     int64     `json:"likes" gorm:"default:0"`
 	Collects  int64     `json:"collects" gorm:"default:0"`
+	Heat      int64     `json:"heat" gorm:"default:0"` // 当日 dramas.heat 快照，用于飙升榜「近30日热度增量」
 	CreatedAt time.Time `json:"created_at"`
 }
 

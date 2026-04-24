@@ -30,6 +30,7 @@ public class Banner {
     public long getDramaId() { return dramaId; }
 
     public boolean isDramaLink() {
-        return "drama".equals(linkType);
+        if (linkType == null) return false;
+        return "drama".equalsIgnoreCase(linkType.trim());
     }
 }

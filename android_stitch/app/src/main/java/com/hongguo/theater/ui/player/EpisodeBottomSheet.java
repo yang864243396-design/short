@@ -95,7 +95,11 @@ public class EpisodeBottomSheet extends BottomSheetDialogFragment {
         });
 
         if (tabLayout.getTabCount() > 0) {
-            tabLayout.selectTab(tabLayout.getTabAt(0));
+            int initialGroup = 0;
+            if (currentIndex > 0) {
+                initialGroup = Math.min(currentIndex / GROUP_SIZE, totalGroups - 1);
+            }
+            tabLayout.selectTab(tabLayout.getTabAt(initialGroup));
         }
     }
 }
