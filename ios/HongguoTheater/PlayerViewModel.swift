@@ -349,7 +349,7 @@ final class PlayerViewModel: ObservableObject {
         installTimeObserver()
         if ep.id == handoffEpisodeId, handoffPositionSeconds > 0 {
             let target = CMTime(seconds: handoffPositionSeconds, preferredTimescale: 600)
-            player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+            await player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         }
         player?.play()
         if let t = authToken, !t.isEmpty {
