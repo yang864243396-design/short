@@ -198,7 +198,8 @@ struct FeedView: View {
         if session.isLoggedIn, !session.token.isEmpty {
             headers["Authorization"] = "Bearer \(session.token)"
         }
-        let asset = AVURLAsset(url: u, options: [AVURLAssetHTTPHeaderFieldsKey: headers])
+        let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
+        let asset = AVURLAsset(url: u, options: options)
         let item = AVPlayerItem(asset: asset)
         player = AVPlayer(playerItem: item)
         if parentTab == .feed, scenePhase == .active {

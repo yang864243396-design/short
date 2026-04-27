@@ -211,7 +211,8 @@ final class PlayerViewModel: ObservableObject {
         if let t = authToken, !t.isEmpty {
             headers["Authorization"] = "Bearer \(t)"
         }
-        let asset = AVURLAsset(url: u, options: [AVURLAssetHTTPHeaderFieldsKey: headers])
+        let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
+        let asset = AVURLAsset(url: u, options: options)
         let item = AVPlayerItem(asset: asset)
         player = AVPlayer(playerItem: item)
         player?.play()
