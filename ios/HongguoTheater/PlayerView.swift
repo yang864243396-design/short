@@ -178,13 +178,6 @@ struct PlayerView: View {
                                     }
                                 }
                             }
-                            sideIcon("star.fill", label: "收藏", on: vm.collected) {
-                                guard session.isLoggedIn else {
-                                    showLogin = true
-                                    return
-                                }
-                                Task { await vm.toggleCollect() }
-                            }
                             if vm.current != nil {
                                 sideIcon("text.bubble.fill", label: formatCount(vm.commentCount), on: false) {
                                     if !session.isLoggedIn {
@@ -193,6 +186,13 @@ struct PlayerView: View {
                                     }
                                     showComments = true
                                 }
+                            }
+                            sideIcon("star.fill", label: "收藏", on: vm.collected) {
+                                guard session.isLoggedIn else {
+                                    showLogin = true
+                                    return
+                                }
+                                Task { await vm.toggleCollect() }
                             }
                             ShareLink(item: shareText) {
                                 VStack(spacing: 4) {
@@ -205,9 +205,6 @@ struct PlayerView: View {
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.white)
                                 }
-                            }
-                            sideIcon("list.bullet", label: "选集", on: false) {
-                                showEpisodes = true
                             }
                         }
                     }
