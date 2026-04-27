@@ -143,7 +143,7 @@ struct FeedView: View {
                         scrollAfterDramaId = entry.dramaId
                         Task { @MainActor in
                             tryScrollAfterDrama()
-                            if scrollAfterDramaId > 0, hasMore, !loading {
+                            if scrollAfterDramaId > 0, !loading {
                                 await loadMore()
                                 tryScrollAfterDrama()
                             }
