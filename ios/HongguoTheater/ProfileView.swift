@@ -52,7 +52,7 @@ struct ProfileView: View {
                 }
             }
             .background(AppTheme.background)
-            .navigationTitle("我的")
+            .navigationTitle("个人中心")
             .task { await refreshHeader() }
             .onChange(of: session.isLoggedIn) { on in
                 if on { Task { await refreshHeader() } }

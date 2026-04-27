@@ -22,7 +22,7 @@ struct MainTabView: View {
                 .tag(MainTab.feed)
 
             ProfileView()
-                .tabItem { Label("我的", systemImage: "person.fill") }
+                .tabItem { Label("个人中心", systemImage: "person.fill") }
                 .tag(MainTab.profile)
         }
         .onReceive(NotificationCenter.default.publisher(for: .hgAuthRequired)) { _ in

@@ -10,27 +10,93 @@ struct SearchView: View {
     @State private var loading = false
 
     var body: some View {
-        List {
-            if !history.isEmpty {
-                Section {
-                    ForEach(history, id: \.self) { h in
-                        Button(h) {
-                            keyword = h
-                            Task { await runSearch() }
-                        }
+        VStack(spacing: 0) {
+            searchHeader
+            if results.isEmpty {
+                defaultPanel
+            } else {
+                resultsPanel
+            }
+        }
+        .background(AppTheme.background)
+        .task {
+            await loadHistory()
+            await loadHotRanks()
+        }
+        .overlay {
+            if loading { ProgressView() }
+        }
+        .navigationBarBackButtonHidden(true)
+        .navigationBarHidden(true)
+    }
+
+    private var searchHeader: some View {
+        HStack(spacing: 8) {
+            Button {
+                handleNavigateUp()
+            } label: {
+                Image(systemName: "chevron.backward")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.onSurface)
+                    .frame(width: 40, height: 40)
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(AppTheme.textHint)
+                TextField("搜索短剧…", text: $keyword)
+                    .foregroundStyle(AppTheme.onSurface)
+                    .submitLabel(.search)
+                    .onSubmit { Task { await runSearch() } }
+                    .onChange(of: keyword) { value in
+                        if value.isEmpty { results = [] }
                     }
-                } header: {
-                    HStack {
-                        Text("搜索历史")
-                        Spacer()
-                        if session.isLoggedIn {
-                            Button("清空", role: .destructive) { Task { await clearHistory() } }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .background(AppTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var defaultPanel: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if !history.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("搜索历史")
+                                .font(.headline)
+                                .foregroundStyle(AppTheme.onSurface)
+                            Spacer()
+                            if session.isLoggedIn {
+                                Button {
+                                    Task { await clearHistory() }
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        FlowLayout(spacing: 8, rowSpacing: 8) {
+                            ForEach(history, id: \.self) { h in
+                                Button {
+                                    keyword = h
+                                    Task { await runSearch() }
+                                } label: {
+                                    Text(h)
+                                        .hgPill()
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                 }
-            }
-            if results.isEmpty, !hotRanks.isEmpty {
-                Section("热播榜") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("今日热播榜")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.onSurface)
                     ForEach(Array(hotRanks.prefix(10))) { item in
                         if let d = item.drama {
                             NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
@@ -41,34 +107,80 @@ struct SearchView: View {
                                         .frame(width: 28)
                                     dramaRow(d)
                                 }
+                                .padding(8)
+                                .hgCard(radius: 10, fill: AppTheme.surface)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
-            if !results.isEmpty {
-                Section("结果") {
-                    ForEach(results) { d in
-                        NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
-                            dramaRow(d)
-                        }
-                    }
+            .padding(16)
+        }
+    }
+
+    private var resultsPanel: some View {
+        List {
+            ForEach(results) { d in
+                NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
+                    dramaRow(d)
                 }
+                .listRowBackground(AppTheme.background)
             }
         }
-        .searchable(text: $keyword, prompt: "搜索短剧…")
-        .onSubmit(of: .search) { Task { await runSearch() } }
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(AppTheme.background)
-        .task {
-            await loadHistory()
-            await loadHotRanks()
+    }
+
+    private func handleNavigateUp() {
+        if !results.isEmpty {
+            results = []
+            keyword = ""
+        } else {
+            dismiss()
         }
-        .overlay {
-            if loading { ProgressView() }
+    }
+
+    private struct FlowLayout: Layout {
+        var spacing: CGFloat
+        var rowSpacing: CGFloat
+
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+            let maxWidth = proposal.width ?? 0
+            var x: CGFloat = 0
+            var y: CGFloat = 0
+            var rowHeight: CGFloat = 0
+
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+                if x > 0, x + size.width > maxWidth {
+                    x = 0
+                    y += rowHeight + rowSpacing
+                    rowHeight = 0
+                }
+                x += size.width + spacing
+                rowHeight = max(rowHeight, size.height)
+            }
+            return CGSize(width: maxWidth, height: y + rowHeight)
         }
-        .navigationTitle("搜索")
-        .navigationBarTitleDisplayMode(.inline)
+
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            var x = bounds.minX
+            var y = bounds.minY
+            var rowHeight: CGFloat = 0
+
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+                if x > bounds.minX, x + size.width > bounds.maxX {
+                    x = bounds.minX
+                    y += rowHeight + rowSpacing
+                    rowHeight = 0
+                }
+                subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+                rowHeight = max(rowHeight, size.height)
+            }
+        }
     }
 
     private func dramaRow(_ d: Drama) -> some View {

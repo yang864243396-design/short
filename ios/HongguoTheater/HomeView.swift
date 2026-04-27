@@ -20,27 +20,28 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    searchBar
-                    bannerSection
-                    hotRankRow
-                    categoryChips
-                    errorBanner
-                    dramaGrid
-                    if loading, dramList.isEmpty {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding()
+            VStack(spacing: 0) {
+                searchBar
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        bannerSection
+                        hotRankRow
+                        categoryChips
+                        errorBanner
+                        dramaGrid
+                        if loading, dramList.isEmpty {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        }
+                        loadMoreTrigger
                     }
-                    loadMoreTrigger
+                    .padding(.vertical, 8)
                 }
-                .padding(.vertical, 8)
+                .refreshable { await refreshAll() }
             }
-            .refreshable { await refreshAll() }
             .background(AppTheme.background)
-            .navigationTitle("红果剧场")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .navigationDestination(for: PlayerEntry.self) { entry in
                 PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
             }
@@ -124,28 +125,24 @@ struct HomeView: View {
                 .foregroundStyle(AppTheme.primary)
             }
             .padding(.horizontal)
-            let items = Array((home?.hotRanking ?? []).prefix(5))
+            let items = Array((home?.hotRanking ?? []).prefix(10))
             if items.isEmpty {
                 Text("暂无榜单数据")
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.onSurfaceVariant)
                     .padding(.horizontal)
             } else {
-                ForEach(items) { it in
-                    if let d = it.drama {
-                        HStack {
-                            Text("\(it.rank)")
-                                .font(.headline)
-                                .foregroundStyle(AppTheme.primary)
-                                .frame(width: 28)
-                            dramaMiniRow(d)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(items) { it in
+                            if let d = it.drama {
+                                rankingCoverCard(rank: it.rank, drama: d)
+                                    .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
+                            }
                         }
-                        .padding(8)
-                        .hgCard(radius: 10, fill: AppTheme.surface)
-                        .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
                     }
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
             }
         }
     }
@@ -224,20 +221,74 @@ struct HomeView: View {
     }
 
     private func dramaMiniRow(_ d: Drama) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 72, height: 100, radius: 6)
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 12) {
+            HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 80, height: 106, radius: 6)
+            VStack(alignment: .leading, spacing: 6) {
                 Text(d.title ?? "")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline)
                     .foregroundStyle(AppTheme.onSurface)
+                    .lineLimit(1)
+                HStack(alignment: .center, spacing: 6) {
+                    tagRow(d.categoryTags)
+                    Spacer(minLength: 6)
+                    Text("\(d.heatText)热度")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                        .lineLimit(1)
+                }
                 Text(d.statusText)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(AppTheme.onSurfaceVariant)
+                if let desc = d.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                        .lineLimit(2)
+                }
             }
             Spacer()
         }
-        .padding(8)
+        .padding(12)
         .hgCard(radius: 10, fill: AppTheme.surface)
+    }
+
+    private func tagRow(_ tags: [String]) -> some View {
+        HStack(spacing: 4) {
+            ForEach(Array(tags.prefix(2)), id: \.self) { tag in
+                Text(tag)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.primaryLight)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppTheme.primary.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    private func rankingCoverCard(rank: Int, drama: Drama) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack(alignment: .topLeading) {
+                HGDramaCover(url: ImageURL.resolve(drama.coverUrl), width: 110, height: 150, radius: 8)
+                Text("\(rank)")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(AppTheme.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .padding(6)
+            }
+            Text(drama.title ?? "")
+                .lineLimit(1)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.onSurface)
+            Text(drama.statusText)
+                .lineLimit(1)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.onSurfaceVariant)
+        }
+        .frame(width: 110, alignment: .leading)
     }
 
     private func refreshAll() async {
@@ -301,6 +352,27 @@ extension Drama {
         }
         if let t = totalEpisodes, t > 0 { return "更新至\(t)集" }
         return status ?? ""
+    }
+
+    var heatText: String {
+        let value = heat ?? 0
+        if value >= 10_000 {
+            return String(format: "%.1fw", Double(value) / 10_000.0)
+        }
+        return "\(value)"
+    }
+
+    var categoryTags: [String] {
+        if let list = categoryList, !list.isEmpty {
+            return list.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        if let category, !category.isEmpty {
+            return category
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        return []
     }
 }
 

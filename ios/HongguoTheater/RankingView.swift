@@ -6,7 +6,6 @@ struct RankingView: View {
     @State private var type: String = "hot"
     @State private var items: [RankItem] = []
     @State private var loading = false
-    @State private var path = NavigationPath()
 
     private let types: [(String, String)] = [
         ("hot", "热播榜"),
@@ -34,9 +33,7 @@ struct RankingView: View {
                 List {
                     ForEach(items) { it in
                         if let d = it.drama {
-                            Button {
-                                path.append(PlayerEntry(dramaId: d.id, episodeId: nil))
-                            } label: {
+                            NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
                                 HStack {
                                     Text("\(it.rank)")
                                         .font(.headline)
@@ -54,6 +51,7 @@ struct RankingView: View {
                         }
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
         }
         .background(AppTheme.background)
@@ -61,9 +59,6 @@ struct RankingView: View {
         .task {
             self.type = initialType
             await load(type)
-        }
-        .navigationDestination(for: PlayerEntry.self) { e in
-            PlayerView(dramaId: e.dramaId, episodeId: e.episodeId)
         }
     }
 
