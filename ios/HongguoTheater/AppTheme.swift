@@ -61,9 +61,10 @@ struct HGInteractionButton: View {
             VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.title2.weight(.semibold))
-                    .foregroundStyle(active ? AppTheme.primary : AppTheme.onSurface)
+                    .foregroundStyle(active ? .white : AppTheme.onSurface)
                     .frame(width: 46, height: 46)
-                    .background(Circle().fill(Color.black.opacity(0.36)))
+                    .background(Circle().fill(active ? activeFill : Color.black.opacity(0.36)))
+                    .overlay(Circle().stroke(active ? activeFill.opacity(0.9) : Color.clear, lineWidth: 1))
                 if let label, !label.isEmpty {
                     Text(label)
                         .font(.caption2.weight(.semibold))
@@ -73,6 +74,10 @@ struct HGInteractionButton: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private var activeFill: Color {
+        icon.contains("heart") ? Color.red : AppTheme.primary
     }
 }
 

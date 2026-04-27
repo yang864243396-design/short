@@ -33,6 +33,7 @@ struct VerticalPagingScrollView: UIViewRepresentable {
         context.coordinator.pageWidth = pageWidth
         context.coordinator.pageHeight = pageHeight
         context.coordinator.rebuildIfNeeded(scrollView: scrollView)
+        context.coordinator.refreshHostedPages()
         context.coordinator.syncOffsetIfIndexChangedExternally()
     }
 
@@ -85,6 +86,13 @@ struct VerticalPagingScrollView: UIViewRepresentable {
             let y = CGFloat(min(max(0, idx), n - 1)) * h
             scrollView.contentOffset = CGPoint(x: 0, y: y)
             isSyncingFromCode = false
+        }
+
+        func refreshHostedPages() {
+            guard pageBuilder != nil, hosts.count == count else { return }
+            for i in 0 ..< hosts.count {
+                hosts[i].rootView = pageBuilder(i)
+            }
         }
 
         func syncOffsetIfIndexChangedExternally() {

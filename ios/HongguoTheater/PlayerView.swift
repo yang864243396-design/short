@@ -148,7 +148,7 @@ struct PlayerView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                         VStack(spacing: 14) {
-                            sideIcon("heart.fill", label: "点赞", on: vm.liked) {
+                            sideIcon("heart.fill", label: formatCount(vm.likeCount), on: vm.liked) {
                                 guard session.isLoggedIn else {
                                     showLogin = true
                                     return
@@ -168,7 +168,7 @@ struct PlayerView: View {
                                 Task { await vm.toggleCollect() }
                             }
                             if vm.current != nil {
-                                sideIcon("text.bubble.fill", label: "评论", on: false) {
+                                sideIcon("text.bubble.fill", label: formatCount(vm.commentCount), on: false) {
                                     if !session.isLoggedIn {
                                         showLogin = true
                                         return
@@ -405,5 +405,12 @@ struct PlayerView: View {
 
     private func addLikeBurst(at point: CGPoint) {
         likeBursts.append(LikeBurst(point: point))
+    }
+
+    private func formatCount(_ count: Int64) -> String {
+        if count >= 10_000 {
+            return String(format: "%.1fw", Double(count) / 10_000.0)
+        }
+        return "\(count)"
     }
 }

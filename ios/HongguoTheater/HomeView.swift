@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var refreshing = false
     @State private var error: String?
     @State private var bannerIndex = 0
+    @State private var dramaRequestID = 0
 
     @State private var path = NavigationPath()
 
@@ -154,13 +155,11 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     chip("全部", sel: category.isEmpty) {
-                        category = ""
-                        Task { await resetDramaList() }
+                        selectCategory("")
                     }
                     ForEach(cats) { c in
                         chip(c.name, sel: category == c.name) {
-                            category = c.name
-                            Task { await resetDramaList() }
+                            selectCategory(c.name)
                         }
                     }
                 }
@@ -215,7 +214,7 @@ struct HomeView: View {
             if hasMore, !dramList.isEmpty {
                 Color.clear
                     .frame(height: 1)
-                    .onAppear { Task { await loadDramasMore() } }
+                    .onAppear { Task { await loadDramasMore(requestID: dramaRequestID, selectedCategory: category) } }
             }
         }
     }
@@ -308,28 +307,40 @@ struct HomeView: View {
     }
 
     private func resetDramaList() async {
+        dramaRequestID += 1
+        let requestID = dramaRequestID
+        let selectedCategory = category
         page = 1
         hasMore = true
         dramList = []
-        await loadDramasMore()
+        loading = false
+        await loadDramasMore(requestID: requestID, selectedCategory: selectedCategory)
     }
 
-    private func loadDramasMore() async {
+    private func selectCategory(_ value: String) {
+        guard category != value || dramList.isEmpty else { return }
+        category = value
+        Task { await resetDramaList() }
+    }
+
+    private func loadDramasMore(requestID: Int, selectedCategory: String) async {
         guard hasMore, !loading else { return }
         loading = true
         defer { loading = false }
         do {
             let tok = session.isLoggedIn ? session.token : nil
             let list = try await APIClient.shared.getDramas(
-                category: category.isEmpty ? nil : category,
+                category: selectedCategory.isEmpty ? nil : selectedCategory,
                 page: page,
                 pageSize: 20,
                 token: tok
             )
+            guard requestID == dramaRequestID, selectedCategory == category else { return }
             if list.isEmpty { hasMore = false; return }
             if page == 1 { dramList = list } else { dramList.append(contentsOf: list) }
             page += 1
         } catch {
+            guard requestID == dramaRequestID, selectedCategory == category else { return }
             hasMore = false
         }
     }

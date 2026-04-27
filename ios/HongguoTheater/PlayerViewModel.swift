@@ -10,6 +10,8 @@ final class PlayerViewModel: ObservableObject {
     @Published var drama: Drama?
     @Published var liked: Bool = false
     @Published var collected: Bool = false
+    @Published var likeCount: Int64 = 0
+    @Published var commentCount: Int64 = 0
     @Published var loadError: String?
     @Published var busy: Bool = false
 
@@ -65,6 +67,7 @@ final class PlayerViewModel: ObservableObject {
                 self.current = eps.first
             }
             if self.current == nil { loadError = "暂无可播分集" }
+            syncCountsFromCurrent()
             startPlaybackPipeline()
         } catch {
             loadError = error.localizedDescription
@@ -75,6 +78,7 @@ final class PlayerViewModel: ObservableObject {
         playTask?.cancel()
         clearAd()
         current = ep
+        syncCountsFromCurrent()
         startPlaybackPipeline()
     }
 
@@ -89,7 +93,11 @@ final class PlayerViewModel: ObservableObject {
         guard let t = authToken, !t.isEmpty, let ep = current else { return false }
         do {
             let result = try await APIClient.shared.likeEpisode(episodeId: ep.id, token: t)
+            let wasLiked = liked
             liked = result.liked
+            if wasLiked != result.liked {
+                likeCount = max(0, likeCount + (result.liked ? 1 : -1))
+            }
             return result.liked
         } catch {
             return false
@@ -114,6 +122,7 @@ final class PlayerViewModel: ObservableObject {
             if let fresh = eps.first(where: { $0.id == ep.id }) {
                 self.current = fresh
             }
+            syncCountsFromCurrent()
             startPlaybackPipeline()
         } catch {
             let msg = error.localizedDescription
@@ -334,6 +343,11 @@ final class PlayerViewModel: ObservableObject {
 
     private func grantTemporaryUnlock(_ episodeId: Int64) {
         temporaryUnlockExpiry[episodeId] = Date().addingTimeInterval(10 * 60)
+    }
+
+    private func syncCountsFromCurrent() {
+        likeCount = current?.likeCount ?? 0
+        commentCount = current?.commentCount ?? 0
     }
 
     private func isTemporarilyUnlocked(_ episodeId: Int64) -> Bool {
