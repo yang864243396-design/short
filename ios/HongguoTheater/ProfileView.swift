@@ -18,6 +18,7 @@ struct ProfileView: View {
     @State private var adSkipConfirmConfig: AdSkipConfig?
     @State private var adSkipInsufficientMessage: String?
     @State private var hgDialog: HGDialog?
+    @State private var selectedAdSkipConfigID: Int64?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -36,7 +37,11 @@ struct ProfileView: View {
                 if on { Task { await refreshHeader() } }
             }
             .sheet(isPresented: $showLogin) { LoginView().environmentObject(session) }
-            .sheet(isPresented: $showAdSkipPicker) { adSkipSheet }
+            .overlay {
+                if showAdSkipPicker {
+                    adSkipPickerOverlay
+                }
+            }
             .onChange(of: adSkipError) { text in
                 guard let text else { return }
                 hgDialog = HGDialog(
@@ -309,53 +314,135 @@ struct ProfileView: View {
         }
     }
 
-    private var adSkipSheet: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-                    ForEach(resolvePurchaseConfigs(), id: \.id) { c in
+    private var adSkipPickerOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { showAdSkipPicker = false }
+            VStack(spacing: 0) {
+                ZStack {
+                    Text(adSkip?.adSkipActive == true ? "选择加油包" : "解锁免广告特权")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 48)
+                    HStack {
+                        Spacer()
                         Button {
-                            adSkipConfirmConfig = c
-                            hgDialog = HGDialog(
-                                title: "确认支付",
-                                message: "购买「\(adSkipTierTitle(c))」\n需支付：\(c.priceCoins) 金币\n当前余额：\(adSkip?.coins ?? user?.coins ?? 0) 金币",
-                                primaryTitle: "确认支付",
-                                secondaryTitle: "取消",
-                                onPrimary: {
-                                    adSkipConfirmConfig = nil
-                                    Task { await validateConfigThenPurchase(c) }
-                                },
-                                onSecondary: { adSkipConfirmConfig = nil }
-                            )
+                            showAdSkipPicker = false
                         } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(c.name)
-                                    .font(.headline)
-                                    .foregroundStyle(AppTheme.onSurface)
-                                Text("\(c.priceCoins) 金币")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(AppTheme.primary)
-                                Text(adSkipTierTitle(c))
-                                    .font(.caption2)
-                                    .foregroundStyle(AppTheme.onSurfaceVariant)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 98, alignment: .leading)
-                            .padding()
-                            .hgCard(fill: AppTheme.surfaceHigh)
+                            Image(systemName: "xmark")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(AppTheme.textHint)
+                                .frame(width: 40, height: 40)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-                .padding()
-            }
-            .background(AppTheme.background)
-            .navigationTitle("选择套餐")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { showAdSkipPicker = false }
+                .padding(.leading, 12)
+                .padding(.top, 8)
+                .padding(.trailing, 8)
+                .padding(.bottom, 4)
+
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+                        ForEach(resolvePurchaseConfigs(), id: \.id) { config in
+                            adSkipTierCell(config)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
                 }
+                .frame(maxHeight: 300)
+
+                HStack {
+                    Text("当前余额: \(adSkip?.coins ?? user?.coins ?? 0) 金币")
+                        .font(.caption)
+                        .foregroundStyle(Color(red: 0.541, green: 0.541, blue: 0.541))
+                    Spacer()
+                    Button("去充值") {
+                        showAdSkipPicker = false
+                        path.append(WalletDest())
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color(red: 1, green: 0.341, blue: 0.133))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 4)
+
+                Button {
+                    guard let selected = selectedAdSkipConfig else { return }
+                    showAdSkipPicker = false
+                    showAdSkipPayConfirm(selected)
+                } label: {
+                    Text("立即解锁")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(AppTheme.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(selectedAdSkipConfig == nil)
+                .opacity(selectedAdSkipConfig == nil ? 0.45 : 1)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
             }
+            .background(Color(red: 0.078, green: 0.078, blue: 0.094))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: 360)
+            .padding(.horizontal, 24)
         }
+        .zIndex(900)
+    }
+
+    private func adSkipTierCell(_ config: AdSkipConfig) -> some View {
+        let selected = selectedAdSkipConfigID == config.id
+        return Button {
+            selectedAdSkipConfigID = config.id
+        } label: {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(adSkipTierTitle(config))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(selected ? Color(red: 1, green: 0.341, blue: 0.133) : .white)
+                        .lineLimit(1)
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(config.priceCoins)")
+                            .font(.title3.weight(.heavy))
+                            .foregroundStyle(selected ? Color(red: 1, green: 0.341, blue: 0.133) : .white)
+                        Text("金币")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(selected ? Color(red: 1, green: 0.341, blue: 0.133).opacity(0.12) : AppTheme.surfaceHigh)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(selected ? Color(red: 1, green: 0.341, blue: 0.133) : Color.clear, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var selectedAdSkipConfig: AdSkipConfig? {
+        let configs = resolvePurchaseConfigs()
+        guard !configs.isEmpty else { return nil }
+        if let id = selectedAdSkipConfigID,
+           let config = configs.first(where: { $0.id == id }) {
+            return config
+        }
+        return configs.first
     }
 
     private func resolvePurchaseConfigs() -> [AdSkipConfig] {
@@ -394,8 +481,24 @@ struct ProfileView: View {
             adSkip = try await APIClient.shared.getAdSkipStatus(token: session.token)
             if let adSkip {
                 adSkipConfigs = allAdSkipConfigs(adSkip)
+                selectedAdSkipConfigID = resolvePurchaseConfigs().first?.id
             }
         } catch { }
+    }
+
+    private func showAdSkipPayConfirm(_ c: AdSkipConfig) {
+        adSkipConfirmConfig = c
+        hgDialog = HGDialog(
+            title: "确认支付",
+            message: "购买「\(adSkipTierTitle(c))」\n需支付：\(c.priceCoins) 金币\n当前余额：\(adSkip?.coins ?? user?.coins ?? 0) 金币",
+            primaryTitle: "确认支付",
+            secondaryTitle: "取消",
+            onPrimary: {
+                adSkipConfirmConfig = nil
+                Task { await validateConfigThenPurchase(c) }
+            },
+            onSecondary: { adSkipConfirmConfig = nil }
+        )
     }
 
     private func validateConfigThenPurchase(_ selected: AdSkipConfig) async {
