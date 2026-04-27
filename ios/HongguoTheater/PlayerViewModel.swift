@@ -67,12 +67,15 @@ final class PlayerViewModel: ObservableObject {
         startPlaybackPipeline()
     }
 
-    func toggleLike() async {
-        guard let t = authToken, !t.isEmpty, let ep = current else { return }
+    func toggleLike() async -> Bool {
+        guard let t = authToken, !t.isEmpty, let ep = current else { return false }
         do {
-            try await APIClient.shared.likeEpisode(episodeId: ep.id, token: t)
-            liked.toggle()
-        } catch {}
+            let result = try await APIClient.shared.likeEpisode(episodeId: ep.id, token: t)
+            liked = result.liked
+            return result.liked
+        } catch {
+            return false
+        }
     }
 
     func toggleCollect() async {

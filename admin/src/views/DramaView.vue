@@ -11,6 +11,18 @@
             <el-option label="正常" value="1" />
             <el-option label="下架" value="0" />
           </el-select>
+          <el-select
+            v-model="filterCategories"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            clearable
+            placeholder="分类"
+            style="width:220px"
+            @change="resetPageAndLoad"
+          >
+            <el-option v-for="cat in categoryList" :key="cat.id" :label="cat.name" :value="cat.name" />
+          </el-select>
           <el-input v-model="keyword" placeholder="搜索标题或剧集ID" style="width:280px" @keyup.enter="resetPageAndLoad" clearable>
             <template #append><el-button @click="resetPageAndLoad">搜索</el-button></template>
           </el-input>
@@ -27,6 +39,21 @@
           </template>
         </el-table-column>
         <el-table-column prop="title" label="标题" min-width="150" />
+        <el-table-column label="推荐排序" width="120">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.recommend_sort"
+              :min="0"
+              :controls="false"
+              :value-on-clear="null"
+              placeholder="空"
+              size="small"
+              style="width:88px"
+              :disabled="!!recommendSortSaving[row.id]"
+              @change="() => saveRecommendSort(row)"
+            />
+          </template>
+        </el-table-column>
         <el-table-column prop="category" label="分类" width="80" />
         <el-table-column prop="total_episodes" label="总集数" width="80" />
         <el-table-column prop="rating" label="评分" width="70" />
@@ -79,6 +106,9 @@
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑剧集' : '新增剧集'" width="600px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="标题"><el-input v-model="form.title" /></el-form-item>
+        <el-form-item label="推荐排序">
+          <el-input-number v-model="form.recommend_sort" :min="0" :value-on-clear="null" placeholder="空则不推荐" style="width:100%" />
+        </el-form-item>
         <el-form-item label="封面">
           <div style="display:flex;align-items:flex-start;gap:12px;width:100%">
             <div style="flex:1">
@@ -256,6 +286,7 @@ const pageSize = 10
 const keyword = ref('')
 const filterStatus = ref<string | undefined>(undefined)
 const filterEnabled = ref<string | undefined>(undefined)
+const filterCategories = ref<string[]>([])
 const loading = ref(false)
 const dialogVisible = ref(false)
 const saving = ref(false)
@@ -266,9 +297,10 @@ const uploadHeaders = computed(() => ({
 }))
 
 const form = reactive({
-  title: '', description: '', cover_url: '', category: '',
+  title: '', recommend_sort: null as number | null, description: '', cover_url: '', category: '',
   total_episodes: 0, rating: 0, heat: 0, status: 'ongoing', enabled: false
 })
+const recommendSortSaving = ref<Record<number, boolean>>({})
 
 function formatHeat(h: number) {
   if (h >= 10000) return (h / 10000).toFixed(1) + 'w'
@@ -283,7 +315,7 @@ function showDialog(row?: any) {
     selectedCategories.value = row.category ? row.category.split(',').map((s: string) => s.trim()).filter(Boolean) : []
   } else {
     editingId.value = null
-    Object.assign(form, { title: '', description: '', cover_url: '', category: '', total_episodes: 0, rating: 0, heat: 0, status: 'ongoing', enabled: false })
+    Object.assign(form, { title: '', recommend_sort: null, description: '', cover_url: '', category: '', total_episodes: 0, rating: 0, heat: 0, status: 'ongoing', enabled: false })
     selectedCategories.value = []
   }
   dialogVisible.value = true
@@ -309,6 +341,7 @@ async function loadData() {
     const params: Record<string, unknown> = { page: page.value, page_size: pageSize, keyword: keyword.value || undefined }
     if (filterStatus.value) params.status = filterStatus.value
     if (filterEnabled.value !== undefined && filterEnabled.value !== '') params.enabled = filterEnabled.value
+    if (filterCategories.value.length > 0) params.categories = filterCategories.value.join(',')
     const res: any = await getDramas(params)
     list.value = res.data.list || []
     total.value = res.data.total || 0
@@ -335,6 +368,28 @@ async function toggleEnabled(row: any) {
   await updateDrama(row.id, { ...row, enabled: newEnabled })
   ElMessage.success(newEnabled ? '已上架（正常）' : '已下架')
   loadData()
+}
+
+async function saveRecommendSort(row: any) {
+  const raw = row.recommend_sort
+  const next = raw === '' || raw === null || raw === undefined ? null : Number(raw)
+  if (next !== null && (!Number.isFinite(next) || next < 0)) {
+    ElMessage.error('推荐排序必须是大于等于 0 的数字')
+    row.recommend_sort = null
+    return
+  }
+  row.recommend_sort = next === null ? null : Math.trunc(next)
+  recommendSortSaving.value = { ...recommendSortSaving.value, [row.id]: true }
+  try {
+    await updateDrama(row.id, { recommend_sort: row.recommend_sort })
+    ElMessage.success('推荐排序已保存')
+  } catch (e) {
+    loadData()
+  } finally {
+    const nextSaving = { ...recommendSortSaving.value }
+    delete nextSaving[row.id]
+    recommendSortSaving.value = nextSaving
+  }
 }
 
 async function handleDelete(id: number) {

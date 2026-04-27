@@ -46,6 +46,7 @@ public class CommentBottomSheet extends BottomSheetDialogFragment {
     }
 
     private long episodeId;
+    private long initialCommentCount;
     private RecyclerView recyclerView;
     private LinearLayoutManager commentsLayoutManager;
     private View layoutCommentEmpty;
@@ -74,9 +75,14 @@ public class CommentBottomSheet extends BottomSheetDialogFragment {
     }
 
     public static CommentBottomSheet newInstance(long episodeId) {
+        return newInstance(episodeId, 0L);
+    }
+
+    public static CommentBottomSheet newInstance(long episodeId, long initialCommentCount) {
         CommentBottomSheet sheet = new CommentBottomSheet();
         Bundle args = new Bundle();
         args.putLong("episode_id", episodeId);
+        args.putLong("initial_comment_count", Math.max(0L, initialCommentCount));
         sheet.setArguments(args);
         return sheet;
     }
@@ -91,6 +97,7 @@ public class CommentBottomSheet extends BottomSheetDialogFragment {
         super.onCreate(savedInstanceState);
         if (getArguments() != null) {
             episodeId = getArguments().getLong("episode_id");
+            initialCommentCount = getArguments().getLong("initial_comment_count", 0L);
         }
     }
 
@@ -106,6 +113,13 @@ public class CommentBottomSheet extends BottomSheetDialogFragment {
         super.onViewCreated(view, savedInstanceState);
 
         view.findViewById(R.id.btn_close).setOnClickListener(v -> dismiss());
+        TextView title = view.findViewById(R.id.tv_comment_sheet_title);
+        if (title != null) {
+            title.setText(getString(
+                    R.string.comment_sheet_title_with_count,
+                    formatCommentCount(initialCommentCount)
+            ));
+        }
 
         recyclerView = view.findViewById(R.id.recycler_comments);
         layoutCommentEmpty = view.findViewById(R.id.layout_comment_empty);
@@ -195,6 +209,13 @@ public class CommentBottomSheet extends BottomSheetDialogFragment {
         if (editComment != null) {
             editComment.setHint(R.string.comment_hint);
         }
+    }
+
+    private String formatCommentCount(long count) {
+        if (count >= 10000) {
+            return String.format("%.1fw", count / 10000.0);
+        }
+        return String.valueOf(Math.max(0L, count));
     }
 
     private void updateCommentEmptyState() {

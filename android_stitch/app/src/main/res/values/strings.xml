@@ -38,6 +38,8 @@
     <string name="ranking_badge_player_format">%1$s · 第%2$d名</string>
 
     <string name="comment_hint">说点什么…</string>
+    <string name="comment_sheet_title">评论</string>
+    <string name="comment_sheet_title_with_count">%1$s 评论</string>
     <string name="comment_empty_title">暂无评论</string>
     <string name="comment_empty_subtitle">快来发表第一条评论吧</string>
     <string name="comment_post_success">发布成功</string>

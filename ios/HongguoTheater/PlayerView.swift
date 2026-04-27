@@ -7,6 +7,7 @@ struct PlayerView: View {
     @StateObject private var vm: PlayerViewModel
     @State private var showEpisodes = false
     @State private var showComments = false
+    @State private var likeBursts: [LikeBurst] = []
 
     init(dramaId: Int64, episodeId: Int64?) {
         _vm = StateObject(wrappedValue: PlayerViewModel(dramaId: dramaId, startEpisodeId: episodeId))
@@ -20,120 +21,139 @@ struct PlayerView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            Group {
-                if vm.showAd, let adp = vm.adPlayer {
-                    VideoPlayer(player: adp)
-                        .ignoresSafeArea()
-                } else if vm.showAd, let u = vm.adImageURL {
-                    ZStack(alignment: .topTrailing) {
-                        AsyncImage(url: u) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView().tint(.white)
-                            case .success(let img):
-                                img
-                                    .resizable()
-                                    .scaledToFill()
-                            case .failure:
-                                Color(white: 0.12)
-                            @unknown default:
-                                Color(white: 0.12)
+        GeometryReader { proxy in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                Group {
+                    if vm.showAd, let adp = vm.adPlayer {
+                        VideoPlayer(player: adp)
+                            .ignoresSafeArea()
+                    } else if vm.showAd, let u = vm.adImageURL {
+                        ZStack(alignment: .topTrailing) {
+                            AsyncImage(url: u) { phase in
+                                switch phase {
+                                case .empty:
+                                    ProgressView().tint(.white)
+                                case .success(let img):
+                                    img
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure:
+                                    Color(white: 0.12)
+                                @unknown default:
+                                    Color(white: 0.12)
+                                }
                             }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                            .clipped()
+                            Text("广告 · \(vm.adCountdown) 秒")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(Color.black.opacity(0.45)))
+                                .padding(16)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .clipped()
-                        Text("广告 · \(vm.adCountdown) 秒")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color.black.opacity(0.45)))
-                            .padding(16)
-                    }
-                    .ignoresSafeArea()
-                } else if let p = vm.player {
-                    VideoPlayer(player: p)
                         .ignoresSafeArea()
-                        .disabled(needsUnlock)
-                } else if vm.busy {
-                    ProgressView()
-                        .tint(.white)
-                }
-            }
-
-            if needsUnlock {
-                Color.black.opacity(0.72).ignoresSafeArea()
-                VStack(spacing: 16) {
-                    Text("本集需金币解锁")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                    if let c = vm.current?.unlockCoins {
-                        Text("需要 \(c) 金币")
-                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                    } else if let p = vm.player {
+                        VideoPlayer(player: p)
+                            .ignoresSafeArea()
+                            .disabled(needsUnlock)
+                    } else if vm.busy {
+                        ProgressView()
+                            .tint(.white)
                     }
-                    Button("使用金币解锁") {
-                        Task { await vm.unlock() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppTheme.primary)
                 }
-                .padding()
-            }
 
-            VStack {
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.backward")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(10)
-                            .background(Circle().fill(Color.black.opacity(0.35)))
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-
-                Spacer()
-
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(vm.drama?.title ?? vm.current?.drama?.title ?? "")
+                if needsUnlock {
+                    Color.black.opacity(0.72).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        Text("本集需金币解锁")
                             .font(.headline)
                             .foregroundStyle(.white)
-                            .shadow(radius: 4)
-                        Text(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")
-                            .font(.subheadline)
-                            .foregroundStyle(Color.white.opacity(0.9))
+                        if let c = vm.current?.unlockCoins {
+                            Text("需要 \(c) 金币")
+                                .foregroundStyle(AppTheme.onSurfaceVariant)
+                        }
+                        Button("使用金币解锁") {
+                            Task { await vm.unlock() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.primary)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                }
 
-                    VStack(spacing: 14) {
-                        if session.isLoggedIn {
-                            sideIcon("heart.fill", on: vm.liked) {
-                                Task { await vm.toggleLike() }
+                VStack {
+                    HStack {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.backward")
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .background(Circle().fill(Color.black.opacity(0.35)))
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
+
+                    Spacer()
+
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(vm.drama?.title ?? vm.current?.drama?.title ?? "")
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                                .shadow(radius: 4)
+                            Text(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.white.opacity(0.9))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        VStack(spacing: 14) {
+                            if session.isLoggedIn {
+                                sideIcon("heart.fill", on: vm.liked) {
+                                    Task {
+                                        let liked = await vm.toggleLike()
+                                        if liked {
+                                            addLikeBurst(at: CGPoint(x: proxy.size.width - 48, y: proxy.size.height * 0.58))
+                                        }
+                                    }
+                                }
+                                sideIcon("star.fill", on: vm.collected) {
+                                    Task { await vm.toggleCollect() }
+                                }
                             }
-                            sideIcon("star.fill", on: vm.collected) {
-                                Task { await vm.toggleCollect() }
+                            if vm.current != nil {
+                                sideIcon("text.bubble.fill", on: false) {
+                                    showComments = true
+                                }
+                            }
+                            sideIcon("list.bullet", on: false) {
+                                showEpisodes = true
                             }
                         }
-                        if vm.current != nil {
-                            sideIcon("text.bubble.fill", on: false) {
-                                showComments = true
-                            }
-                        }
-                        sideIcon("list.bullet", on: false) {
-                            showEpisodes = true
-                        }
+                    }
+                    .padding()
+                    .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
+                }
+
+                ForEach(likeBursts) { burst in
+                    FloatingLikeBurstView(burst: burst) {
+                        likeBursts.removeAll { $0.id == burst.id }
                     }
                 }
-                .padding()
-                .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
             }
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                SpatialTapGesture(count: 2).onEnded { value in
+                    Task { await likeFromDoubleTap(at: value.location) }
+                }
+            )
         }
         .navigationBarHidden(true)
         .task {
@@ -156,8 +176,8 @@ struct PlayerView: View {
         }
         .sheet(isPresented: $showComments) {
             Group {
-                if let eid = vm.current?.id {
-                    CommentSheetView(episodeId: eid)
+                if let ep = vm.current {
+                    CommentSheetView(episodeId: ep.id, initialCommentCount: ep.commentCount ?? 0)
                         .environmentObject(session)
                 } else {
                     VStack { Text("分集未就绪") }
@@ -200,5 +220,21 @@ struct PlayerView: View {
                 .padding(10)
                 .background(Circle().fill(Color.black.opacity(0.35)))
         }
+    }
+
+    private func likeFromDoubleTap(at point: CGPoint) async {
+        guard session.isLoggedIn, !vm.showAd, !needsUnlock, vm.current != nil else { return }
+        if vm.liked {
+            addLikeBurst(at: point)
+            return
+        }
+        let liked = await vm.toggleLike()
+        if liked {
+            addLikeBurst(at: point)
+        }
+    }
+
+    private func addLikeBurst(at point: CGPoint) {
+        likeBursts.append(LikeBurst(point: point))
     }
 }

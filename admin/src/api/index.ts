@@ -33,7 +33,7 @@ export const getAdminWalletTransactions = (params: any) =>
 export const getAdminRechargeOrders = (params: any) =>
   request.get('/recharge-orders', { params })
 
-export const getUserRecentWalletTx = (userId: number, params?: { page_size?: number }) =>
+export const getUserRecentWalletTx = (userId: number, params?: { page?: number; page_size?: number }) =>
   request.get(`/users/${userId}/wallet/recent`, { params })
 
 export const getRechargePackagesAdmin = () => request.get('/recharge-packages')

@@ -85,6 +85,7 @@ func AdminDashboard(c *gin.Context) {
 // adminDramaInput 创建剧集用：enabled 缺省时默认为下架（新建默认不对用户端展示）
 type adminDramaInput struct {
 	Title         string  `json:"title"`
+	RecommendSort *int    `json:"recommend_sort"`
 	CoverURL      string  `json:"cover_url"`
 	Description   string  `json:"description"`
 	Category      string  `json:"category"`
@@ -101,6 +102,7 @@ func AdminGetDramas(c *gin.Context) {
 	keyword := c.Query("keyword")
 	statusFilter := c.Query("status")
 	enabledStr := strings.ToLower(strings.TrimSpace(c.Query("enabled")))
+	categoryFilters := parseAdminCategoryFilters(c.Query("categories"))
 
 	var dramas []models.Drama
 	var total int64
@@ -116,6 +118,9 @@ func AdminGetDramas(c *gin.Context) {
 	if statusFilter != "" {
 		query = query.Where("status = ?", statusFilter)
 	}
+	for _, category := range categoryFilters {
+		query = query.Where("FIND_IN_SET(?, REPLACE(category, ' ', '')) > 0", category)
+	}
 	switch enabledStr {
 	case "1", "true", "yes":
 		query = query.Where("enabled = ?", true)
@@ -128,6 +133,24 @@ func AdminGetDramas(c *gin.Context) {
 	utils.Success(c, gin.H{"list": dramas, "total": total, "page": page, "page_size": pageSize})
 }
 
+func parseAdminCategoryFilters(raw string) []string {
+	parts := strings.Split(raw, ",")
+	categories := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		category := strings.ReplaceAll(strings.TrimSpace(part), " ", "")
+		if category == "" {
+			continue
+		}
+		if _, ok := seen[category]; ok {
+			continue
+		}
+		seen[category] = struct{}{}
+		categories = append(categories, category)
+	}
+	return categories
+}
+
 func AdminCreateDrama(c *gin.Context) {
 	var in adminDramaInput
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -136,6 +159,7 @@ func AdminCreateDrama(c *gin.Context) {
 	}
 	drama := models.Drama{
 		Title:         in.Title,
+		RecommendSort: in.RecommendSort,
 		CoverURL:      in.CoverURL,
 		Description:   in.Description,
 		Category:      in.Category,

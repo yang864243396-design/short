@@ -30,7 +30,11 @@ func GetFeed(c *gin.Context) {
 		WHERE enabled = 1 AND id IN (
 			SELECT DISTINCT drama_id FROM episodes WHERE video_path IS NOT NULL AND video_path != ''
 		)
-		ORDER BY -LOG(RAND()) / GREATEST(heat, 1)
+		ORDER BY
+			recommend_sort IS NULL,
+			CASE WHEN recommend_sort IS NOT NULL THEN recommend_sort END ASC,
+			CASE WHEN recommend_sort IS NOT NULL THEN id END DESC,
+			CASE WHEN recommend_sort IS NULL THEN -LOG(RAND()) / GREATEST(heat, 1) END ASC
 		LIMIT ? OFFSET ?
 	`, pageSize, offset).Scan(&dramas)
 
@@ -66,10 +70,11 @@ func GetFeed(c *gin.Context) {
 		dramaH := gin.H{
 			"id":             drama.ID,
 			"title":          drama.Title,
+			"recommend_sort": drama.RecommendSort,
 			"cover_url":      drama.CoverURL,
 			"description":    drama.Description,
-			"category":        drama.Category,
-			"category_list":   utils.ParseCategoryList(drama.Category),
+			"category":       drama.Category,
+			"category_list":  utils.ParseCategoryList(drama.Category),
 			"total_episodes": drama.TotalEpisodes,
 			"rating":         drama.Rating,
 			"heat":           drama.Heat,

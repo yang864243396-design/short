@@ -70,10 +70,7 @@
           <strong style="color:var(--el-color-primary)">{{ walletDisplayCoins }}</strong>
           金币
         </p>
-        <p style="margin:0 0 12px">
-          <el-button type="primary" link @click="goFullWalletFromWalletDialog">查看全部流水</el-button>
-        </p>
-        <div style="margin-bottom:10px;font-weight:600;font-size:13px">最近流水</div>
+        <div style="margin-bottom:10px;font-weight:600;font-size:13px">流水记录</div>
         <el-table :data="walletRecentList" v-loading="walletRecentLoading" size="small" stripe max-height="280">
           <el-table-column prop="id" label="ID" width="70" />
           <el-table-column prop="type" label="类型" width="80">
@@ -89,6 +86,14 @@
             <template #default="{ row: r }">{{ formatTime(r.created_at) }}</template>
           </el-table-column>
         </el-table>
+        <el-pagination
+          style="margin-top:10px;justify-content:flex-end"
+          layout="total, prev, pager, next"
+          :total="walletRecentTotal"
+          :page-size="walletRecentPageSize"
+          :current-page="walletRecentPage"
+          @current-change="onWalletRecentPageChange"
+        />
         <el-divider style="margin:16px 0" />
         <el-form label-width="100px" style="max-width:520px">
           <el-form-item label="操作类型">
@@ -258,7 +263,6 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUsers, getUser, updateUser, deleteUser, adminRechargeUser, adminDeductUser, getUserRecentWalletTx } from '@/api'
 import { adminUploadImageUrl, resolveMediaUrl } from '@/config/api'
@@ -281,8 +285,6 @@ function isUserDeleted(row: Record<string, unknown> | null | undefined) {
   return true
 }
 
-const router = useRouter()
-
 const uploadHeaders = computed(() => ({
   Authorization: 'Bearer ' + (localStorage.getItem('admin_token') || '')
 }))
@@ -297,6 +299,9 @@ const walletRow = ref<any>(null)
 const walletDisplayCoins = ref(0)
 const walletRecentList = ref<any[]>([])
 const walletRecentLoading = ref(false)
+const walletRecentPage = ref(1)
+const walletRecentPageSize = ref(10)
+const walletRecentTotal = ref(0)
 const walletOp = ref<'add' | 'deduct'>('add')
 const walletAmount = ref<number | undefined>(undefined)
 const walletRemark = ref('')
@@ -339,17 +344,26 @@ function formatTime(t: unknown) {
   return str.length >= 19 ? str.slice(0, 19) : str
 }
 
-async function loadWalletRecentTx(userId: number) {
+async function loadWalletRecentTx(userId: number, page = walletRecentPage.value) {
   walletRecentLoading.value = true
-  walletRecentList.value = []
   try {
-    const res: any = await getUserRecentWalletTx(userId, { page_size: 10 })
+    const res: any = await getUserRecentWalletTx(userId, { page, page_size: walletRecentPageSize.value })
+    walletRecentPage.value = Number(res.data?.page || page || 1)
     walletRecentList.value = res.data?.list || []
+    walletRecentTotal.value = Number(res.data?.total || 0)
   } catch (e) {
     walletRecentList.value = []
+    walletRecentTotal.value = 0
   } finally {
     walletRecentLoading.value = false
   }
+}
+
+function onWalletRecentPageChange(p: number) {
+  const id = walletRow.value?.id
+  if (!id) return
+  walletRecentPage.value = p
+  loadWalletRecentTx(id, p)
 }
 
 function openWalletDialog(row: any) {
@@ -359,6 +373,8 @@ function openWalletDialog(row: any) {
   }
   walletRow.value = row
   walletDisplayCoins.value = row.coins ?? 0
+  walletRecentPage.value = 1
+  walletRecentTotal.value = 0
   walletOp.value = 'add'
   walletAmount.value = undefined
   walletRemark.value = ''
@@ -370,16 +386,12 @@ function resetWalletDialog() {
   walletRow.value = null
   walletDisplayCoins.value = 0
   walletRecentList.value = []
+  walletRecentPage.value = 1
+  walletRecentTotal.value = 0
   walletOp.value = 'add'
   walletAmount.value = undefined
   walletRemark.value = ''
   walletSubmitting.value = false
-}
-
-function goFullWalletFromWalletDialog() {
-  const id = walletRow.value?.id
-  walletVisible.value = false
-  if (id != null) router.push({ path: '/wallet', query: { user_id: String(id) } })
 }
 
 async function submitWalletAdjust() {
@@ -407,7 +419,7 @@ async function submitWalletAdjust() {
     ElMessage.success(walletOp.value === 'add' ? '已增加金币' : '已减少金币')
     walletAmount.value = undefined
     walletRemark.value = ''
-    await loadWalletRecentTx(row.id)
+    await loadWalletRecentTx(row.id, walletRecentPage.value)
     loadData()
   } catch (e) {
     /* 拦截器已提示 */

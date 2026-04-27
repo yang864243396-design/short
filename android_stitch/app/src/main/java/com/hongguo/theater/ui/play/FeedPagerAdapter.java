@@ -1,13 +1,20 @@
 package com.hongguo.theater.ui.play;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.GestureDetector;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -202,14 +209,35 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
             player.play();
         }
 
-        holder.playerView.setOnClickListener(v -> {
-            if (player.isPlaying()) {
-                player.pause();
-            } else {
-                player.play();
+        GestureDetector detector = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (player.isPlaying()) {
+                    player.pause();
+                } else {
+                    player.play();
+                }
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                performLikeAction(holder, episode, true, e.getX(), e.getY());
+                return true;
+            }
+
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
             }
         });
+        holder.playerView.setOnTouchListener((v, event) -> {
+            detector.onTouchEvent(event);
+            return false;
+        });
 
+        holder.liked = false;
+        holder.likeRequestInFlight = false;
         holder.btnLike.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
         holder.btnCollect.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
 
@@ -233,6 +261,7 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
                                     if (data != null) {
                                         boolean liked = Boolean.TRUE.equals(data.get("liked"));
                                         boolean collected = Boolean.TRUE.equals(data.get("collected"));
+                                        holder.liked = liked;
                                         holder.btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
                                         holder.btnCollect.setColorFilter(collected ? Color.parseColor("#FFC107") : Color.WHITE, PorterDuff.Mode.SRC_IN);
                                     }
@@ -253,31 +282,14 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         }
 
         holder.btnLike.setOnClickListener(v -> {
-            if (!LoginHelper.requireLogin(context)) return;
-            ApiClient.getService().likeEpisode(episode.getId())
-                    .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
-                        @Override
-                        public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
-                                               @NonNull Response<ApiResponse<Map<String, Object>>> r) {
-                            if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
-                                Map<String, Object> data = r.body().getData();
-                                boolean liked = data != null && Boolean.TRUE.equals(data.get("liked"));
-                                holder.btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
-                                long count = episode.getLikeCount() + (liked ? 1 : -1);
-                                if (count < 0) count = 0;
-                                episode.setLikeCount(count);
-                                holder.likeCount.setText(episode.getLikeCountText());
-                            }
-                        }
-                        @Override
-                        public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {}
-                    });
+            float[] center = centerInItem(holder, holder.btnLike);
+            performLikeAction(holder, episode, false, center[0], center[1]);
         });
 
         holder.btnComment.setOnClickListener(v -> {
             if (!LoginHelper.requireLogin(context)) return;
             if (context instanceof FragmentActivity) {
-                CommentBottomSheet sheet = CommentBottomSheet.newInstance(episode.getId());
+                CommentBottomSheet sheet = CommentBottomSheet.newInstance(episode.getId(), episode.getCommentCount());
                 sheet.setOnCommentPostedListener(() -> {
                     episode.setCommentCount(episode.getCommentCount() + 1);
                     holder.commentCount.setText(episode.getCommentCountText());
@@ -339,6 +351,117 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
                 bindFeedDescription(holder);
             });
         }
+    }
+
+    private void performLikeAction(FeedViewHolder holder, Episode episode, boolean forceLike, float x, float y) {
+        if (!LoginHelper.requireLogin(context)) return;
+        if (forceLike && holder.liked) {
+            showLikeSuccessEffect(holder, x, y);
+            pulseLikeButton(holder);
+            return;
+        }
+        if (holder.likeRequestInFlight) return;
+        holder.likeRequestInFlight = true;
+        ApiClient.getService().likeEpisode(episode.getId())
+                .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
+                    @Override
+                    public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
+                                           @NonNull Response<ApiResponse<Map<String, Object>>> r) {
+                        holder.likeRequestInFlight = false;
+                        if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
+                            Map<String, Object> data = r.body().getData();
+                            boolean liked = data != null && Boolean.TRUE.equals(data.get("liked"));
+                            applyLikeState(holder, episode, liked);
+                            if (liked) {
+                                showLikeSuccessEffect(holder, x, y);
+                                pulseLikeButton(holder);
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {
+                        holder.likeRequestInFlight = false;
+                    }
+                });
+    }
+
+    private void applyLikeState(FeedViewHolder holder, Episode episode, boolean liked) {
+        if (holder.liked != liked) {
+            long count = episode.getLikeCount() + (liked ? 1 : -1);
+            if (count < 0) count = 0;
+            episode.setLikeCount(count);
+        }
+        holder.liked = liked;
+        holder.btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
+        holder.likeCount.setText(episode.getLikeCountText());
+    }
+
+    private void pulseLikeButton(FeedViewHolder holder) {
+        holder.btnLike.animate().cancel();
+        holder.btnLike.setScaleX(1f);
+        holder.btnLike.setScaleY(1f);
+        holder.btnLike.animate()
+                .scaleX(1.24f)
+                .scaleY(1.24f)
+                .setDuration(110)
+                .withEndAction(() -> holder.btnLike.animate().scaleX(1f).scaleY(1f).setDuration(160).start())
+                .start();
+    }
+
+    private void showLikeSuccessEffect(FeedViewHolder holder, float x, float y) {
+        if (!(holder.itemView instanceof FrameLayout)) return;
+        FrameLayout overlay = (FrameLayout) holder.itemView;
+        ImageView heart = new ImageView(context);
+        heart.setImageResource(R.drawable.ic_favorite);
+        heart.setColorFilter(Color.RED, PorterDuff.Mode.SRC_IN);
+        int size = (int) (context.getResources().getDisplayMetrics().density * 88);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size);
+        lp.leftMargin = Math.round(x - size / 2f);
+        lp.topMargin = Math.round(y - size / 2f);
+        overlay.addView(heart, lp);
+        heart.setAlpha(0f);
+        heart.setScaleX(0.55f);
+        heart.setScaleY(0.55f);
+        heart.setRotation((float) (Math.random() * 24f - 12f));
+
+        AnimatorSet enter = new AnimatorSet();
+        enter.playTogether(
+                ObjectAnimator.ofFloat(heart, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_X, 0.55f, 1.15f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_Y, 0.55f, 1.15f)
+        );
+        enter.setDuration(140);
+
+        AnimatorSet exit = new AnimatorSet();
+        exit.playTogether(
+                ObjectAnimator.ofFloat(heart, View.ALPHA, 1f, 0f),
+                ObjectAnimator.ofFloat(heart, View.TRANSLATION_Y, 0f, -140f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_X, 1.15f, 1.34f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_Y, 1.15f, 1.34f)
+        );
+        exit.setDuration(520);
+        exit.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                overlay.removeView(heart);
+            }
+        });
+
+        AnimatorSet all = new AnimatorSet();
+        all.playSequentially(enter, exit);
+        all.start();
+    }
+
+    private float[] centerInItem(FeedViewHolder holder, View target) {
+        int[] itemLoc = new int[2];
+        int[] targetLoc = new int[2];
+        holder.itemView.getLocationOnScreen(itemLoc);
+        target.getLocationOnScreen(targetLoc);
+        return new float[] {
+                targetLoc[0] - itemLoc[0] + target.getWidth() / 2f,
+                targetLoc[1] - itemLoc[1] + target.getHeight() / 2f
+        };
     }
 
     private void setupSeekBar(SeekBar seekBar, ExoPlayer player, int position) {
@@ -476,6 +599,8 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
         boolean descExpanded;
         ImageView btnLike, btnComment, btnCollect, btnShare;
         SeekBar seekBar;
+        boolean liked;
+        boolean likeRequestInFlight;
 
         FeedViewHolder(View v) {
             super(v);

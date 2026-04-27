@@ -17,6 +17,11 @@ struct FeedView: View {
     @State private var player: AVPlayer?
     @State private var loadError: String?
     @State private var loadMoreError: String?
+    @State private var likedEpisodeIds: Set<Int64> = []
+    @State private var likeCounts: [Int64: Int64] = [:]
+    @State private var likingEpisodeIds: Set<Int64> = []
+    @State private var likeBursts: [LikeBurst] = []
+    @State private var commentSheetEpisode: Episode?
 
     private static let pageSize = 10
 
@@ -68,6 +73,11 @@ struct FeedView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.black.opacity(0.78))
                         }
+                        ForEach(likeBursts) { burst in
+                            FloatingLikeBurstView(burst: burst) {
+                                likeBursts.removeAll { $0.id == burst.id }
+                            }
+                        }
                     }
                 }
             }
@@ -105,6 +115,10 @@ struct FeedView: View {
                 Task { await loadFeed(reset: true) }
             }
         }
+        .sheet(item: $commentSheetEpisode) { ep in
+            CommentSheetView(episodeId: ep.id, initialCommentCount: ep.commentCount ?? 0)
+                .environmentObject(session)
+        }
     }
 
     @ViewBuilder
@@ -113,18 +127,65 @@ struct FeedView: View {
         ZStack(alignment: .bottomLeading) {
             Color.clear
                 .frame(width: size.width, height: size.height)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(dramaTitle)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text("第 \(ep.episodeNumber) 集")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.9))
+            HStack(alignment: .bottom, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(dramaTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Text("第 \(ep.episodeNumber) 集")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(spacing: 14) {
+                    Button {
+                        Task {
+                            let point = CGPoint(x: size.width - 46, y: size.height * 0.58)
+                            if await toggleFeedLike(ep) {
+                                addLikeBurst(at: point)
+                            }
+                        }
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: "heart.fill")
+                                .font(.title2)
+                                .foregroundStyle(isLiked(ep) ? Color.red : .white)
+                                .padding(10)
+                                .background(Circle().fill(Color.black.opacity(0.35)))
+                            Text(likeCountText(ep))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .disabled(likingEpisodeIds.contains(ep.id))
+
+                    Button {
+                        commentSheetEpisode = ep
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: "text.bubble.fill")
+                                .font(.title2)
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .background(Circle().fill(Color.black.opacity(0.35)))
+                            Text(commentCountText(ep))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom))
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            SpatialTapGesture(count: 2).onEnded { value in
+                handleFeedDoubleTap(ep, location: value.location)
+            }
+        )
     }
 
     private func rebuildPlayerForCurrent() {
@@ -143,6 +204,7 @@ struct FeedView: View {
         if parentTab == .feed, scenePhase == .active {
             player?.play()
         }
+        Task { await loadInteractionIfNeeded(for: ep) }
     }
 
     private func tryScrollAfterDrama() {
@@ -197,6 +259,8 @@ struct FeedView: View {
                 episodes.append(contentsOf: list)
             } else {
                 episodes = list
+                likedEpisodeIds.removeAll()
+                likeCounts.removeAll()
             }
             loadError = nil
             loadMoreError = nil
@@ -213,5 +277,77 @@ struct FeedView: View {
                 loadError = error.localizedDescription
             }
         }
+    }
+
+    private func isLiked(_ ep: Episode) -> Bool {
+        likedEpisodeIds.contains(ep.id)
+    }
+
+    private func likeCountText(_ ep: Episode) -> String {
+        let count = likeCounts[ep.id] ?? ep.likeCount ?? 0
+        if count >= 10_000 {
+            return String(format: "%.1fw", Double(count) / 10_000.0)
+        }
+        return "\(count)"
+    }
+
+    private func commentCountText(_ ep: Episode) -> String {
+        let count = ep.commentCount ?? 0
+        if count >= 10_000 {
+            return String(format: "%.1fw", Double(count) / 10_000.0)
+        }
+        return "\(count)"
+    }
+
+    private func handleFeedDoubleTap(_ ep: Episode, location: CGPoint) {
+        guard session.isLoggedIn else { return }
+        if isLiked(ep) {
+            addLikeBurst(at: location)
+            return
+        }
+        Task {
+            if await toggleFeedLike(ep) {
+                addLikeBurst(at: location)
+            }
+        }
+    }
+
+    private func toggleFeedLike(_ ep: Episode) async -> Bool {
+        guard session.isLoggedIn, !session.token.isEmpty else { return false }
+        guard !likingEpisodeIds.contains(ep.id) else { return false }
+        likingEpisodeIds.insert(ep.id)
+        defer { likingEpisodeIds.remove(ep.id) }
+        do {
+            let oldLiked = isLiked(ep)
+            let result = try await APIClient.shared.likeEpisode(episodeId: ep.id, token: session.token)
+            if result.liked {
+                likedEpisodeIds.insert(ep.id)
+            } else {
+                likedEpisodeIds.remove(ep.id)
+            }
+            if oldLiked != result.liked {
+                let base = likeCounts[ep.id] ?? ep.likeCount ?? 0
+                likeCounts[ep.id] = max(0, base + (result.liked ? 1 : -1))
+            }
+            return result.liked
+        } catch {
+            return false
+        }
+    }
+
+    private func loadInteractionIfNeeded(for ep: Episode) async {
+        guard session.isLoggedIn, !session.token.isEmpty else { return }
+        do {
+            let interaction = try await APIClient.shared.getEpisodeInteraction(episodeId: ep.id, token: session.token)
+            if interaction.liked {
+                likedEpisodeIds.insert(ep.id)
+            } else {
+                likedEpisodeIds.remove(ep.id)
+            }
+        } catch {}
+    }
+
+    private func addLikeBurst(at point: CGPoint) {
+        likeBursts.append(LikeBurst(point: point))
     }
 }

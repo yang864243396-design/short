@@ -217,6 +217,10 @@ struct EpisodeInteraction: Decodable, Sendable {
     let collected: Bool
 }
 
+struct LikeEpisodeResult: Decodable, Sendable {
+    let liked: Bool
+}
+
 // MARK: - Comments（对齐 backend `models.Comment` + 列表页）
 struct CommentItem: Codable, Identifiable, Sendable {
     let id: Int64

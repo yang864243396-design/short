@@ -11,6 +11,7 @@ type DramaRankingInfo struct {
 type Drama struct {
 	ID            uint    `json:"id" gorm:"primaryKey"`
 	Title         string  `json:"title" gorm:"size:200;not null"`
+	RecommendSort *int    `json:"recommend_sort" gorm:"index"`
 	CoverURL      string  `json:"cover_url" gorm:"size:500"`
 	Description   string  `json:"description" gorm:"type:text"`
 	Category      string  `json:"category" gorm:"size:200"`

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CommentSheetView: View {
     let episodeId: Int64
+    let initialCommentCount: Int64
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
 
@@ -75,7 +76,7 @@ struct CommentSheetView: View {
                         .padding(.bottom, 8)
                 }
             }
-            .navigationTitle("评论")
+            .navigationTitle("\(Self.formatCommentCount(initialCommentCount)) 评论")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }
@@ -149,5 +150,12 @@ struct CommentSheetView: View {
         } catch {
             actionError = "操作失败：\(error.localizedDescription)"
         }
+    }
+
+    private static func formatCommentCount(_ count: Int64) -> String {
+        if count >= 10_000 {
+            return String(format: "%.1fw", Double(count) / 10_000.0)
+        }
+        return "\(max(0, count))"
     }
 }

@@ -21,6 +21,7 @@ import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -142,6 +143,8 @@ public class PlayerActivity extends AppCompatActivity {
     private Drama drama;
     private List<Episode> episodes;
     private int currentEpisodeIndex = 0;
+    private boolean currentEpisodeLiked = false;
+    private boolean likeRequestInFlight = false;
     private boolean isPlayingAd = false;
     /** 当前是否为图片解锁广告（不计入 ExoPlayer 播放结束逻辑） */
     private boolean adIsImage = false;
@@ -362,7 +365,7 @@ public class PlayerActivity extends AppCompatActivity {
             if (!LoginHelper.requireLogin(this)) return;
             if (episodes != null && currentEpisodeIndex < episodes.size()) {
                 Episode ep = episodes.get(currentEpisodeIndex);
-                CommentBottomSheet sheet = CommentBottomSheet.newInstance(ep.getId());
+                CommentBottomSheet sheet = CommentBottomSheet.newInstance(ep.getId(), ep.getCommentCount());
                 sheet.setOnCommentPostedListener(() -> {
                     ep.setCommentCount(ep.getCommentCount() + 1);
                     tvCommentCount.setText(ep.getCommentCountText());
@@ -372,29 +375,8 @@ public class PlayerActivity extends AppCompatActivity {
         });
 
         btnLike.setOnClickListener(v -> {
-            if (isPlayingAd) return;
-            if (!LoginHelper.requireLogin(this)) return;
-            if (episodes != null && currentEpisodeIndex < episodes.size()) {
-                Episode ep = episodes.get(currentEpisodeIndex);
-                ApiClient.getService().likeEpisode(ep.getId())
-                        .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
-                            @Override
-                            public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
-                                                   @NonNull Response<ApiResponse<Map<String, Object>>> r) {
-                                if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
-                                    Map<String, Object> data = r.body().getData();
-                                    boolean liked = data != null && Boolean.TRUE.equals(data.get("liked"));
-                                    btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
-                                    long count = ep.getLikeCount() + (liked ? 1 : -1);
-                                    if (count < 0) count = 0;
-                                    ep.setLikeCount(count);
-                                    tvLikeCount.setText(ep.getLikeCountText());
-                                }
-                            }
-                            @Override
-                            public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {}
-                        });
-            }
+            float[] center = centerInVideoArea(btnLike);
+            performLikeAction(false, center[0], center[1]);
         });
 
         btnCollect.setOnClickListener(v -> {
@@ -463,6 +445,13 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (isPlayingAd) return false;
+                performLikeAction(true, e.getX(), e.getY());
+                return true;
+            }
+
+            @Override
             public boolean onDown(MotionEvent e) {
                 return true;
             }
@@ -490,6 +479,121 @@ public class PlayerActivity extends AppCompatActivity {
                     .show();
             return true;
         });
+    }
+
+    private void performLikeAction(boolean forceLike, float x, float y) {
+        if (isPlayingAd) return;
+        if (!LoginHelper.requireLogin(this)) return;
+        if (episodes == null || currentEpisodeIndex >= episodes.size()) return;
+        Episode ep = episodes.get(currentEpisodeIndex);
+
+        if (forceLike && currentEpisodeLiked) {
+            showLikeSuccessEffect(x, y);
+            pulseLikeButton();
+            return;
+        }
+        if (likeRequestInFlight) return;
+        likeRequestInFlight = true;
+        ApiClient.getService().likeEpisode(ep.getId())
+                .enqueue(new Callback<ApiResponse<Map<String, Object>>>() {
+                    @Override
+                    public void onResponse(@NonNull Call<ApiResponse<Map<String, Object>>> call,
+                                           @NonNull Response<ApiResponse<Map<String, Object>>> r) {
+                        likeRequestInFlight = false;
+                        if (r.isSuccessful() && r.body() != null && r.body().isSuccess()) {
+                            Map<String, Object> data = r.body().getData();
+                            boolean liked = data != null && Boolean.TRUE.equals(data.get("liked"));
+                            applyLikeState(ep, liked);
+                            if (liked) {
+                                showLikeSuccessEffect(x, y);
+                                pulseLikeButton();
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<ApiResponse<Map<String, Object>>> call, @NonNull Throwable t) {
+                        likeRequestInFlight = false;
+                    }
+                });
+    }
+
+    private void applyLikeState(@NonNull Episode ep, boolean liked) {
+        if (currentEpisodeLiked != liked) {
+            long count = ep.getLikeCount() + (liked ? 1 : -1);
+            if (count < 0) count = 0;
+            ep.setLikeCount(count);
+        }
+        currentEpisodeLiked = liked;
+        btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
+        tvLikeCount.setText(ep.getLikeCountText());
+    }
+
+    private void pulseLikeButton() {
+        btnLike.animate().cancel();
+        btnLike.setScaleX(1f);
+        btnLike.setScaleY(1f);
+        btnLike.animate()
+                .scaleX(1.24f)
+                .scaleY(1.24f)
+                .setDuration(110)
+                .withEndAction(() -> btnLike.animate().scaleX(1f).scaleY(1f).setDuration(160).start())
+                .start();
+    }
+
+    private void showLikeSuccessEffect(float x, float y) {
+        if (!(layoutVideoArea instanceof FrameLayout)) return;
+        FrameLayout overlay = (FrameLayout) layoutVideoArea;
+        ImageView heart = new ImageView(this);
+        heart.setImageResource(R.drawable.ic_favorite);
+        heart.setColorFilter(Color.RED, PorterDuff.Mode.SRC_IN);
+        int size = (int) (getResources().getDisplayMetrics().density * 88);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size);
+        lp.leftMargin = Math.round(x - size / 2f);
+        lp.topMargin = Math.round(y - size / 2f);
+        overlay.addView(heart, lp);
+        heart.setAlpha(0f);
+        heart.setScaleX(0.55f);
+        heart.setScaleY(0.55f);
+        heart.setRotation((float) (Math.random() * 24f - 12f));
+
+        AnimatorSet enter = new AnimatorSet();
+        enter.playTogether(
+                ObjectAnimator.ofFloat(heart, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_X, 0.55f, 1.15f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_Y, 0.55f, 1.15f)
+        );
+        enter.setDuration(140);
+
+        AnimatorSet exit = new AnimatorSet();
+        exit.playTogether(
+                ObjectAnimator.ofFloat(heart, View.ALPHA, 1f, 0f),
+                ObjectAnimator.ofFloat(heart, View.TRANSLATION_Y, 0f, -140f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_X, 1.15f, 1.34f),
+                ObjectAnimator.ofFloat(heart, View.SCALE_Y, 1.15f, 1.34f)
+        );
+        exit.setDuration(520);
+        exit.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                overlay.removeView(heart);
+            }
+        });
+
+        AnimatorSet all = new AnimatorSet();
+        all.playSequentially(enter, exit);
+        all.start();
+    }
+
+    private float[] centerInVideoArea(View target) {
+        int[] areaLoc = new int[2];
+        int[] targetLoc = new int[2];
+        layoutVideoArea.getLocationOnScreen(areaLoc);
+        target.getLocationOnScreen(targetLoc);
+        return new float[] {
+                targetLoc[0] - areaLoc[0] + target.getWidth() / 2f,
+                targetLoc[1] - areaLoc[1] + target.getHeight() / 2f
+        };
     }
 
     private void togglePlayPause() {
@@ -1082,6 +1186,8 @@ public class PlayerActivity extends AppCompatActivity {
         tvLikeCount.setText(ep.getLikeCountText());
         tvCommentCount.setText(ep.getCommentCountText());
 
+        currentEpisodeLiked = false;
+        likeRequestInFlight = false;
         btnLike.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
         btnCollect.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
 
@@ -1146,6 +1252,7 @@ public class PlayerActivity extends AppCompatActivity {
                             if (data != null) {
                                 boolean liked = Boolean.TRUE.equals(data.get("liked"));
                                 boolean collected = Boolean.TRUE.equals(data.get("collected"));
+                                currentEpisodeLiked = liked;
                                 btnLike.setColorFilter(liked ? Color.RED : Color.WHITE, PorterDuff.Mode.SRC_IN);
                                 btnCollect.setColorFilter(collected ? Color.parseColor("#FFC107") : Color.WHITE, PorterDuff.Mode.SRC_IN);
                             }

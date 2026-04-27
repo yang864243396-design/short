@@ -175,20 +175,37 @@ func AdminDeleteAdSkipConfig(c *gin.Context) {
 // AdminListUserRecentWalletTx 用户最近流水（管理端用户详情用）
 func AdminListUserRecentWalletTx(c *gin.Context) {
 	uidStr := c.Param("id")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if page < 1 {
+		page = 1
+	}
 	if pageSize < 1 {
 		pageSize = 10
 	}
 	if pageSize > 50 {
 		pageSize = 50
 	}
+	offset := (page - 1) * pageSize
+
+	var total int64
+	database.DB.Model(&models.WalletTransaction{}).
+		Where("user_id = ?", uidStr).
+		Count(&total)
+
 	var list []AdminWalletTransactionItem
 	database.DB.Table("wallet_transactions as t").
 		Select("t.*, u.username as username").
 		Joins("LEFT JOIN app_users u ON u.id = t.user_id").
 		Where("t.user_id = ?", uidStr).
 		Order("t.id DESC").
+		Offset(offset).
 		Limit(pageSize).
 		Scan(&list)
-	utils.Success(c, gin.H{"list": list})
+	utils.Success(c, gin.H{
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }

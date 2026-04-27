@@ -346,13 +346,14 @@ extension APIClient {
         return d
     }
 
-    func likeEpisode(episodeId: Int64, token: String) async throws {
-        let r: APIResponse<OptionalEmpty> = try await fetchResponse(
+    func likeEpisode(episodeId: Int64, token: String) async throws -> LikeEpisodeResult {
+        let r: APIResponse<LikeEpisodeResult> = try await fetchResponse(
             path: "episodes/\(episodeId)/like",
             method: "POST",
             token: token
         )
-        guard r.isSuccess else { throw APIError.business(r.message ?? "操作失败") }
+        guard r.isSuccess, let d = r.data else { throw APIError.business(r.message ?? "操作失败") }
+        return d
     }
 
     func collectForEpisodeDrama(episodeId: Int64, token: String) async throws {

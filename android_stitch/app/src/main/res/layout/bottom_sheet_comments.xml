@@ -12,10 +12,11 @@
         android:padding="16dp">
 
         <TextView
+            android:id="@+id/tv_comment_sheet_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_centerHorizontal="true"
-            android:text="评论"
+            android:text="@string/comment_sheet_title"
             android:textColor="@color/on_surface"
             android:textSize="16sp"
             android:textStyle="bold" />
