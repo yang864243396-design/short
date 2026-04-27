@@ -153,7 +153,7 @@ struct HomeView: View {
         if !cats.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    chip("推荐", sel: category.isEmpty) {
+                    chip("全部", sel: category.isEmpty) {
                         category = ""
                         Task { await resetDramaList() }
                     }

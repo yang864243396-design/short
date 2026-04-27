@@ -18,41 +18,16 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
-                    if session.isLoggedIn {
-                        adSkipRow
-                    }
-                }
-                .padding(.top)
-                Picker("", selection: $tab) {
-                    Text("历史").tag(0)
-                    Text("收藏").tag(1)
-                    Text("点赞").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .onChange(of: tab) { _ in Task { await loadTab() } }
-                .onAppear { Task { await loadTab() } }
-
+            VStack(spacing: 0) {
+                header
                 if session.isLoggedIn {
-                    if tab == 0 {
-                        VStack(alignment: .leading, spacing: 10) { listHistory }
-                    } else if tab == 1 {
-                        VStack(alignment: .leading, spacing: 10) { listCollection }
-                    } else {
-                        VStack(alignment: .leading, spacing: 10) { listLikes }
-                    }
+                    loggedInContent
                 } else {
-                    Text("登录后查看")
-                        .foregroundStyle(AppTheme.onSurfaceVariant)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
+                    notLoggedInContent
                 }
             }
             .background(AppTheme.background)
-            .navigationTitle("个人中心")
+            .navigationBarHidden(true)
             .task { await refreshHeader() }
             .onChange(of: session.isLoggedIn) { on in
                 if on { Task { await refreshHeader() } }
@@ -77,60 +52,99 @@ struct ProfileView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 12) {
+        HStack(spacing: 16) {
+            avatarView
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.isLoggedIn ? (user?.displayName ?? "用户") : "未登录")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.onSurface)
+                if session.isLoggedIn {
+                    Text("点击头像可更换")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                } else {
+                    Text("点击登录享受更多权益")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                }
+            }
+            Spacer()
             if session.isLoggedIn {
-                HStack(spacing: 16) {
-                    avatarView
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(user?.displayName ?? "用户")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(AppTheme.onSurface)
-                        Text("\(user?.coins ?? 0) 金币")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppTheme.primary)
-                    }
-                    Spacer()
                     Button("退出") { session.logout() }
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.onSurfaceVariant)
-                }
-                .padding()
-                .hgCard(radius: 18, fill: AppTheme.surfaceHigh)
-                .padding(.horizontal)
-                Button {
-                    path.append(WalletDest())
-                } label: {
-                    HStack {
-                        Image(systemName: "creditcard.fill")
-                            .foregroundStyle(AppTheme.primary)
-                        Text("我的钱包")
-                            .foregroundStyle(AppTheme.onSurface)
-                        Spacer()
-                        Text("\(user?.coins ?? 0) 金币")
-                            .foregroundStyle(AppTheme.onSurfaceVariant)
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(AppTheme.onSurfaceVariant)
-                    }
-                    .padding()
-                    .hgCard(fill: AppTheme.surface)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal)
-            } else {
-                Button { showLogin = true } label: {
-                    HStack {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                            .font(.largeTitle)
-                        Text("点击登录")
-                            .font(.title3)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .hgCard(radius: 18, fill: AppTheme.surfaceHigh)
-                    .padding(.horizontal)
-                }
             }
         }
+        .padding(20)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !session.isLoggedIn { showLogin = true }
+        }
+    }
+
+    private var loggedInContent: some View {
+        VStack(spacing: 0) {
+            walletRow
+            adSkipRow
+            tabBar
+            listContent
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var notLoggedInContent: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: 80))
+                .foregroundStyle(AppTheme.onSurfaceVariant.opacity(0.3))
+            Text("登录后查看个人数据")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.onSurfaceVariant)
+            Button("登录") { showLogin = true }
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 160, height: 40)
+                .background(AppTheme.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var walletRow: some View {
+        Button {
+            path.append(WalletDest())
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color(red: 0.239, green: 0.18, blue: 0.165))
+                    Image(systemName: "creditcard.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color(red: 1, green: 0.557, blue: 0.451))
+                }
+                .frame(width: 44, height: 44)
+                Text("我的钱包")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.onSurface)
+                Spacer()
+                Text("\(user?.coins ?? 0) 金币")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Color(red: 1, green: 0.557, blue: 0.451))
+                Text("›")
+                    .font(.title2)
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(minHeight: 56)
+            .background(Color(red: 0.118, green: 0.118, blue: 0.133))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -164,33 +178,115 @@ struct ProfileView: View {
 
     private var adSkipRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let a = adSkip {
-                if a.adSkipActive {
-                    Text("免广权益：剩余 \(a.adSkipRemaining) 次 · 到期见服务端")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.onSurfaceVariant)
-                } else {
-                    Text("当前无免广告权益")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.onSurfaceVariant)
-                }
-            }
+            Text("免广告")
+                .font(.headline)
+                .foregroundStyle(AppTheme.onSurface)
+            Text(adSkipStatusText)
+                .font(.caption)
+                .foregroundStyle(AppTheme.onSurfaceVariant)
             Button {
                 Task {
                     await loadAdSkipForPicker()
                     showAdSkipPicker = true
                 }
             } label: {
-                Text("购买免广告 / 加油包")
+                Text(adSkip?.adSkipActive == true ? "购买加油包" : "购买广告跳过卡")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.primary)
                     .frame(maxWidth: .infinity)
-                    .padding(10)
-                    .background(AppTheme.primary.opacity(0.2))
+                    .padding(.vertical, 12)
+                    .background(Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(AppTheme.primary.opacity(0.45), lineWidth: 1)
+                    )
+            }
+            .disabled(resolvePurchaseConfigs().isEmpty)
+            .opacity(resolvePurchaseConfigs().isEmpty ? 0.45 : 1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 16)
+        .background(Color(red: 0.078, green: 0.078, blue: 0.094))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+        )
+        .padding(.horizontal)
+        .padding(.bottom, 10)
+    }
+
+    private var adSkipStatusText: String {
+        guard let a = adSkip else { return "免广告信息暂时无法更新，请稍后下拉重试" }
+        if a.adSkipActive, let raw = a.adSkipExpiresAt, !raw.isEmpty {
+            let text = String(raw.replacingOccurrences(of: "T", with: " ").prefix(19))
+            return "免广告至 \(text) · 剩余 \(a.adSkipRemaining) 次"
+        }
+        return "当前无免广告权益"
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            profileTab("历史", index: 0)
+            profileTab("收藏", index: 1)
+            profileTab("点赞", index: 2)
+        }
+        .frame(height: 48)
+        .background(AppTheme.background)
+        .onAppear { Task { await loadTab() } }
+    }
+
+    private func profileTab(_ title: String, index: Int) -> some View {
+        Button {
+            tab = index
+            Task { await loadTab() }
+        } label: {
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.subheadline.weight(tab == index ? .bold : .regular))
+                    .foregroundStyle(tab == index ? AppTheme.onSurface : AppTheme.onSurfaceVariant)
+                Rectangle()
+                    .fill(tab == index ? AppTheme.primary : Color.clear)
+                    .frame(height: 3)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
+        let empty = currentListIsEmpty
+        if empty {
+            Text("暂无数据")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.onSurfaceVariant)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    if tab == 0 {
+                        listHistory
+                    } else if tab == 1 {
+                        listCollection
+                    } else {
+                        listLikes
+                    }
+                }
+                .padding(16)
             }
         }
-        .padding()
-        .hgCard(fill: AppTheme.surface)
-        .padding(.horizontal)
+    }
+
+    private var currentListIsEmpty: Bool {
+        switch tab {
+        case 0: return history.isEmpty
+        case 1: return collections.isEmpty
+        case 2: return likes.isEmpty
+        default: return true
+        }
     }
 
     private var adSkipSheet: some View {
@@ -260,19 +356,13 @@ struct ProfileView: View {
         ForEach(history, id: \.id) { h in
             if let d = h.drama {
                 Button { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) } label: {
-                    HStack {
-                        HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 48, height: 64, radius: 4)
-                        VStack(alignment: .leading) {
-                            Text(d.title ?? "")
-                                .foregroundStyle(AppTheme.onSurface)
-                            Text(h.isFinished ? "已看完" : "看到第 \(h.lastEpisode) 集")
-                                .font(.caption2)
-                                .foregroundStyle(AppTheme.onSurfaceVariant)
-                        }
-                    }
-                    .padding(10)
-                    .hgCard(fill: AppTheme.surface)
+                    profileListRow(
+                        title: d.title ?? "",
+                        subtitle: h.isFinished ? "已看完" : String(format: "看到 %02d集", h.lastEpisode),
+                        cover: d.coverUrl
+                    )
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -280,32 +370,46 @@ struct ProfileView: View {
     private var listCollection: some View {
         ForEach(collections) { d in
             Button { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) } label: {
-                HStack {
-                    HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 48, height: 64, radius: 4)
-                    Text(d.title ?? "")
-                        .foregroundStyle(AppTheme.onSurface)
-                }
-                .padding(10)
-                .hgCard(fill: AppTheme.surface)
+                profileListRow(
+                    title: d.title ?? "",
+                    subtitle: "\(d.category ?? "") · \(d.statusText)",
+                    cover: d.coverUrl
+                )
             }
+            .buttonStyle(.plain)
         }
     }
 
     private var listLikes: some View {
         ForEach(likes) { e in
             Button { path.append(PlayerEntry(dramaId: e.dramaId, episodeId: e.id)) } label: {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(e.drama?.title ?? "短剧")
-                        Text("第 \(e.episodeNumber) 集")
-                            .font(.caption2)
-                            .foregroundStyle(AppTheme.onSurfaceVariant)
-                    }
-                }
-                .padding(10)
-                .hgCard(fill: AppTheme.surface)
+                profileListRow(
+                    title: e.drama?.title ?? e.title ?? "短剧",
+                    subtitle: "第\(e.episodeNumber)集 · \(Self.formatCount(e.likeCount ?? 0))赞",
+                    cover: e.drama?.coverUrl
+                )
             }
+            .buttonStyle(.plain)
         }
+    }
+
+    private func profileListRow(title: String, subtitle: String, cover: String?) -> some View {
+        HStack(spacing: 12) {
+            HGDramaCover(url: ImageURL.resolve(cover), width: 56, height: 72, radius: 4)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.onSurface)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
+                    .lineLimit(1)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .hgCard(radius: 10, fill: AppTheme.surface)
     }
 
     private func refreshHeader() async {
@@ -314,7 +418,13 @@ struct ProfileView: View {
                 user = try await APIClient.shared.getProfile(token: session.token)
                 adSkip = try? await APIClient.shared.getAdSkipStatus(token: session.token)
             } catch { user = nil }
-        } else { user = nil }
+        } else {
+            user = nil
+            adSkip = nil
+            history = []
+            collections = []
+            likes = []
+        }
         if session.isLoggedIn { await loadTab() }
     }
 
@@ -342,6 +452,13 @@ struct ProfileView: View {
             )
             self.user = u
         } catch { }
+    }
+
+    private static func formatCount(_ count: Int64) -> String {
+        if count >= 10_000 {
+            return String(format: "%.1fw", Double(count) / 10_000.0)
+        }
+        return "\(count)"
     }
 }
 

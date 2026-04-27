@@ -19,13 +19,19 @@ final class PlayerViewModel: ObservableObject {
     @Published var adImageURL: URL?
     @Published var adCountdown: Int = 0
     @Published var adErrorHint: String?
+    @Published var adCanClose: Bool = false
+    @Published var confirmAbandonAd: Bool = false
+    @Published var rechargePrompt: Bool = false
 
     let dramaId: Int64
     private let startEpisodeId: Int64?
     var authToken: String?
     private var adEndObserver: NSObjectProtocol?
     private var adTimeoutTask: Task<Void, Never>?
+    private var adCountdownTask: Task<Void, Never>?
     private var playTask: Task<Void, Never>?
+    private var adGrantsTemporaryUnlock = false
+    private var temporaryUnlockExpiry: [Int64: Date] = [:]
 
     init(dramaId: Int64, startEpisodeId: Int64?) {
         self.dramaId = dramaId
@@ -35,7 +41,12 @@ final class PlayerViewModel: ObservableObject {
     private func shouldPaywall(_ ep: Episode) -> Bool {
         let free = ep.isFree ?? true
         let unlocked = ep.coinUnlocked ?? false
-        return !free && !unlocked
+        return !free && !unlocked && !isTemporarilyUnlocked(ep.id)
+    }
+
+    func needsUnlockGate() -> Bool {
+        guard let ep = current else { return false }
+        return shouldPaywall(ep)
     }
 
     func load() async {
@@ -105,7 +116,20 @@ final class PlayerViewModel: ObservableObject {
             }
             startPlaybackPipeline()
         } catch {
-            loadError = error.localizedDescription
+            let msg = error.localizedDescription
+            if msg.contains("金币不足") {
+                rechargePrompt = true
+            } else {
+                loadError = msg
+            }
+        }
+    }
+
+    func watchAdForTemporaryUnlock() {
+        guard current != nil else { return }
+        playTask?.cancel()
+        playTask = Task { @MainActor in
+            await self.runAdThenMain(grantsTemporaryUnlock: true)
         }
     }
 
@@ -113,35 +137,43 @@ final class PlayerViewModel: ObservableObject {
     private func startPlaybackPipeline() {
         playTask?.cancel()
         playTask = Task { @MainActor in
-            await self.runAdThenMain()
+            await self.runAdThenMain(grantsTemporaryUnlock: false)
         }
     }
 
-    private func runAdThenMain() async {
+    private func runAdThenMain(grantsTemporaryUnlock: Bool) async {
         clearAd()
         player?.pause()
         player = nil
-        guard let ep = current, !shouldPaywall(ep) else { return }
+        guard let ep = current else { return }
+        if shouldPaywall(ep), !grantsTemporaryUnlock { return }
         if Task.isCancelled { return }
         let eid: Int64? = (authToken != nil && !authToken!.isEmpty) ? ep.id : nil
         if let p = await APIClient.shared.getAdVideoPayload(episodeId: eid, token: authToken) {
             if p.skipAd == true {
+                if grantsTemporaryUnlock || shouldPaywall(ep) {
+                    grantTemporaryUnlock(ep.id)
+                }
                 await playMainStream()
                 return
             }
             let dur = max(1, p.duration ?? 15)
             let mt = (p.mediaType ?? "video").lowercased()
             if Task.isCancelled { return }
+            adGrantsTemporaryUnlock = grantsTemporaryUnlock || shouldPaywall(ep)
             if mt == "image", let iu = resolveMedia(p.imageUrl) {
                 await runImageAd(iu, seconds: dur)
             } else if let vu = resolveMedia(p.videoUrl) {
                 // 片长时间约 dur 秒，超时取 2~3 倍作为兜底，与常见贴片长度同量级
                 let cap = min(120, max(30, dur * 3))
-                await runVideoAd(url: vu, maxWaitSeconds: cap)
+                await runVideoAd(url: vu, durationSeconds: dur, maxWaitSeconds: cap)
             } else {
                 await playMainStream()
             }
         } else {
+            if grantsTemporaryUnlock || shouldPaywall(ep) {
+                grantTemporaryUnlock(ep.id)
+            }
             await playMainStream()
         }
     }
@@ -157,6 +189,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func runImageAd(_ url: URL, seconds: Int) async {
         showAd = true
+        adCanClose = false
         adImageURL = url
         adCountdown = max(1, seconds)
         while adCountdown > 0, !Task.isCancelled {
@@ -167,19 +200,22 @@ final class PlayerViewModel: ObservableObject {
             }
             adCountdown -= 1
         }
+        adCanClose = true
         if Task.isCancelled {
             clearAd()
             return
         }
-        adImageURL = nil
-        showAd = false
-        await playMainStream()
+        // 图片广告与 Android 一致：倒计时结束后变为“关闭广告”，由用户关闭后获得本集临时权限。
     }
 
-    private func runVideoAd(url: URL, maxWaitSeconds: Int) async {
+    private func runVideoAd(url: URL, durationSeconds: Int, maxWaitSeconds: Int) async {
         adTimeoutTask?.cancel()
         adTimeoutTask = nil
+        adCountdownTask?.cancel()
+        adCountdownTask = nil
         showAd = true
+        adCanClose = false
+        adCountdown = max(0, durationSeconds)
         adPlayer?.pause()
         adPlayer = nil
         if let o = adEndObserver { NotificationCenter.default.removeObserver(o) }
@@ -188,6 +224,17 @@ final class PlayerViewModel: ObservableObject {
         adPlayer = pl
         pl.play()
         let waitSec = max(20, min(120, maxWaitSeconds))
+        adCountdownTask = Task { @MainActor in
+            while self.adCountdown > 0, !Task.isCancelled, self.showAd {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if !Task.isCancelled, self.showAd {
+                    self.adCountdown -= 1
+                }
+            }
+            if !Task.isCancelled, self.showAd {
+                self.adCanClose = true
+            }
+        }
         adTimeoutTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(waitSec) * 1_000_000_000)
             if !Task.isCancelled { await onAdVideoEnded() }
@@ -206,8 +253,43 @@ final class PlayerViewModel: ObservableObject {
     private func onAdVideoEnded() async {
         // 防「播完 + 超时」或重复通知双进
         guard showAd else { return }
+        await finishAdAndPlayMain()
+    }
+
+    func finishAdAndPlayMain() async {
+        guard showAd else { return }
+        if adGrantsTemporaryUnlock, let ep = current {
+            grantTemporaryUnlock(ep.id)
+        }
         clearAd()
         await playMainStream()
+    }
+
+    func requestCloseAd() {
+        if adCanClose {
+            Task { @MainActor in
+                await finishAdAndPlayMain()
+            }
+        } else {
+            confirmAbandonAd = true
+            if adPlayer?.rate != 0 {
+                adPlayer?.pause()
+            }
+        }
+    }
+
+    func continueAd() {
+        confirmAbandonAd = false
+        if showAd, adImageURL == nil {
+            adPlayer?.play()
+        }
+    }
+
+    func abandonAdUnlock() {
+        confirmAbandonAd = false
+        clearAd()
+        player?.pause()
+        player = nil
     }
 
     private func playMainStream() async {
@@ -235,6 +317,8 @@ final class PlayerViewModel: ObservableObject {
     private func clearAd() {
         adTimeoutTask?.cancel()
         adTimeoutTask = nil
+        adCountdownTask?.cancel()
+        adCountdownTask = nil
         if let o = adEndObserver {
             NotificationCenter.default.removeObserver(o)
             adEndObserver = nil
@@ -243,7 +327,22 @@ final class PlayerViewModel: ObservableObject {
         adPlayer = nil
         adImageURL = nil
         adCountdown = 0
+        adCanClose = false
+        adGrantsTemporaryUnlock = false
         showAd = false
+    }
+
+    private func grantTemporaryUnlock(_ episodeId: Int64) {
+        temporaryUnlockExpiry[episodeId] = Date().addingTimeInterval(10 * 60)
+    }
+
+    private func isTemporarilyUnlocked(_ episodeId: Int64) -> Bool {
+        guard let exp = temporaryUnlockExpiry[episodeId] else { return false }
+        if Date() >= exp {
+            temporaryUnlockExpiry.removeValue(forKey: episodeId)
+            return false
+        }
+        return true
     }
 
 }
