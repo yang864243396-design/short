@@ -13,13 +13,18 @@ struct PlayerView: View {
     @State private var showWallet = false
     @State private var showLogin = false
     @State private var hgDialog: HGDialog?
+    @State private var controlsVisible = true
+    @State private var dragProgress: Double?
+    private let onRequestNextDramaFromFeed: (() -> Void)?
 
     init(
         dramaId: Int64,
         episodeId: Int64?,
         handoffStreamURL: URL? = nil,
-        handoffPositionSeconds: Double = 0
+        handoffPositionSeconds: Double = 0,
+        onRequestNextDramaFromFeed: (() -> Void)? = nil
     ) {
+        self.onRequestNextDramaFromFeed = onRequestNextDramaFromFeed
         _vm = StateObject(wrappedValue: PlayerViewModel(
             dramaId: dramaId,
             startEpisodeId: episodeId,
@@ -128,7 +133,7 @@ struct PlayerView: View {
                     }
                 }
 
-                if !vm.showAd, !needsUnlock {
+                if !vm.showAd, !needsUnlock, controlsVisible {
                 VStack {
                     HStack {
                         Button {
@@ -214,16 +219,7 @@ struct PlayerView: View {
                 if !vm.showAd, !needsUnlock {
                     VStack {
                         Spacer()
-                        GeometryReader { bar in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .fill(Color.white.opacity(0.18))
-                                Rectangle()
-                                    .fill(Color.white.opacity(0.96))
-                                    .frame(width: bar.size.width * vm.playbackProgress)
-                            }
-                        }
-                        .frame(height: 2)
+                        playerDock
                     }
                     .ignoresSafeArea(edges: .bottom)
                 }
@@ -240,14 +236,36 @@ struct PlayerView: View {
                     Task { await likeFromDoubleTap(at: value.location) }
                 }
             )
+            .onTapGesture {
+                vm.togglePlayPause()
+                controlsVisible = true
+            }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 60)
                     .onEnded { value in
                         guard abs(value.translation.height) > abs(value.translation.width) else { return }
                         if value.translation.height < -80 {
-                            vm.selectRelativeEpisode(offset: 1)
+                            if !vm.selectRelativeEpisode(offset: 1), vm.isOnLastEpisode {
+                                if let onRequestNextDramaFromFeed {
+                                    onRequestNextDramaFromFeed()
+                                } else {
+                                    hgDialog = HGDialog(
+                                        title: "提示",
+                                        message: "已经是最后一集了",
+                                        primaryTitle: "确定",
+                                        informStyle: true
+                                    )
+                                }
+                            }
                         } else if value.translation.height > 80 {
-                            vm.selectRelativeEpisode(offset: -1)
+                            if !vm.selectRelativeEpisode(offset: -1), vm.isOnFirstEpisode {
+                                hgDialog = HGDialog(
+                                    title: "提示",
+                                    message: "已经是第一集了",
+                                    primaryTitle: "确定",
+                                    informStyle: true
+                                )
+                            }
                         }
                     }
             )
@@ -405,6 +423,58 @@ struct PlayerView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.primaryLight)
             }
+        }
+    }
+
+    private var playerDock: some View {
+        VStack(spacing: 0) {
+            seekBar
+                .frame(height: 12)
+                .padding(.horizontal, 16)
+            Button {
+                showEpisodes = true
+            } label: {
+                Text("选集 \(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .background(Color(red: 0.145, green: 0.145, blue: 0.145))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 6)
+        }
+        .background(Color.black)
+    }
+
+    private var seekBar: some View {
+        GeometryReader { geo in
+            let progress = dragProgress ?? vm.playbackProgress
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.22))
+                    .frame(height: 2)
+                Capsule()
+                    .fill(AppTheme.primaryLight)
+                    .frame(width: max(0, min(1, progress)) * geo.size.width, height: 2)
+                Circle()
+                    .fill(AppTheme.primaryLight)
+                    .frame(width: 10, height: 10)
+                    .offset(x: max(0, min(1, progress)) * geo.size.width - 5)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        dragProgress = min(1, max(0, value.location.x / max(geo.size.width, 1)))
+                    }
+                    .onEnded { value in
+                        let p = min(1, max(0, value.location.x / max(geo.size.width, 1)))
+                        dragProgress = nil
+                        Task { await vm.seek(to: p) }
+                    }
+            )
         }
     }
 

@@ -26,6 +26,8 @@ struct FeedView: View {
     @State private var playerEntry: FeedPlayerEntry?
     @State private var expandedEpisodeIds: Set<Int64> = []
     @State private var playbackError: String?
+    @State private var playbackProgress: Double = 0
+    @State private var timeObserver: Any?
 
     private static let pageSize = 10
 
@@ -77,6 +79,7 @@ struct FeedView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.black.opacity(0.78))
                         }
+                        feedProgressBar
                         ForEach(likeBursts) { burst in
                             FloatingLikeBurstView(burst: burst) {
                                 likeBursts.removeAll { $0.id == burst.id }
@@ -134,7 +137,20 @@ struct FeedView: View {
                     dramaId: entry.dramaId,
                     episodeId: entry.episodeId,
                     handoffStreamURL: entry.streamURL,
-                    handoffPositionSeconds: entry.positionSeconds
+                    handoffPositionSeconds: entry.positionSeconds,
+                    onRequestNextDramaFromFeed: {
+                        playerEntry = nil
+                        scrollAfterDramaId = entry.dramaId
+                        Task { @MainActor in
+                            tryScrollAfterDrama()
+                            if scrollAfterDramaId > 0, hasMore, !loading {
+                                await loadMore()
+                                tryScrollAfterDrama()
+                            }
+                            rebuildPlayerForCurrent()
+                            player?.play()
+                        }
+                    }
                 )
                     .environmentObject(session)
             }
@@ -291,7 +307,9 @@ struct FeedView: View {
 
     private func rebuildPlayerForCurrent() {
         player?.pause()
+        clearTimeObserver()
         player = nil
+        playbackProgress = 0
         guard currentIndex < episodes.count else { return }
         let ep = episodes[currentIndex]
         guard let u = PlaybackURL.url(for: ep) else { return }
@@ -305,12 +323,53 @@ struct FeedView: View {
             let asset = AVURLAsset(url: playableURL, options: options)
             let item = AVPlayerItem(asset: asset)
             player = AVPlayer(playerItem: item)
+            installTimeObserver(for: item)
             if parentTab == .feed, scenePhase == .active {
                 player?.play()
             }
             prefetchNeighbor(after: currentIndex, headers: headers)
         }
         Task { await loadInteractionIfNeeded(for: ep) }
+    }
+
+    private var feedProgressBar: some View {
+        VStack {
+            Spacer()
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.18))
+                    Rectangle()
+                        .fill(Color.white.opacity(0.96))
+                        .frame(width: geo.size.width * playbackProgress)
+                }
+            }
+            .frame(height: 3)
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func installTimeObserver(for item: AVPlayerItem) {
+        clearTimeObserver()
+        guard let player else { return }
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { time in
+            let duration = item.duration.seconds
+            guard duration.isFinite, duration > 0 else {
+                playbackProgress = 0
+                return
+            }
+            playbackProgress = min(1, max(0, time.seconds / duration))
+        }
+    }
+
+    private func clearTimeObserver() {
+        if let timeObserver, let player {
+            player.removeTimeObserver(timeObserver)
+        }
+        timeObserver = nil
     }
 
     private func prefetchNeighbor(after index: Int, headers: [String: String]) {

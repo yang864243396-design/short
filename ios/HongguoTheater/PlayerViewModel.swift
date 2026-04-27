@@ -13,6 +13,7 @@ final class PlayerViewModel: ObservableObject {
     @Published var likeCount: Int64 = 0
     @Published var commentCount: Int64 = 0
     @Published var playbackProgress: Double = 0
+    @Published var isPlaying: Bool = false
     @Published var loadError: String?
     @Published var busy: Bool = false
 
@@ -96,11 +97,23 @@ final class PlayerViewModel: ObservableObject {
         startPlaybackPipeline()
     }
 
-    func selectRelativeEpisode(offset: Int) {
-        guard let cur = current, let idx = episodes.firstIndex(where: { $0.id == cur.id }) else { return }
+    @discardableResult
+    func selectRelativeEpisode(offset: Int) -> Bool {
+        guard let cur = current, let idx = episodes.firstIndex(where: { $0.id == cur.id }) else { return false }
         let next = idx + offset
-        guard episodes.indices.contains(next) else { return }
+        guard episodes.indices.contains(next) else { return false }
         selectEpisode(episodes[next])
+        return true
+    }
+
+    var isOnLastEpisode: Bool {
+        guard let cur = current, let idx = episodes.firstIndex(where: { $0.id == cur.id }) else { return false }
+        return idx == episodes.count - 1
+    }
+
+    var isOnFirstEpisode: Bool {
+        guard let cur = current, let idx = episodes.firstIndex(where: { $0.id == cur.id }) else { return false }
+        return idx == 0
     }
 
     func toggleLike() async -> Bool {
@@ -156,6 +169,25 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    func togglePlayPause() {
+        guard let player else { return }
+        if player.rate > 0 {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    func seek(to progress: Double) async {
+        guard let player, let duration = player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
+        let clamped = min(1, max(0, progress))
+        playbackProgress = clamped
+        let target = CMTime(seconds: duration * clamped, preferredTimescale: 600)
+        await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
     // MARK: - 广告 + 正片
     private func startPlaybackPipeline() {
         playTask?.cancel()
@@ -169,6 +201,7 @@ final class PlayerViewModel: ObservableObject {
         player?.pause()
         clearTimeObserver()
         player = nil
+        isPlaying = false
         guard let ep = current else { return }
         if shouldPaywall(ep), !grantsTemporaryUnlock { return }
         if Task.isCancelled { return }
@@ -247,6 +280,7 @@ final class PlayerViewModel: ObservableObject {
         let pl = AVPlayer(playerItem: item)
         adPlayer = pl
         pl.play()
+        isPlaying = false
         let waitSec = max(20, min(120, maxWaitSeconds))
         adCountdownTask = Task { @MainActor in
             while self.adCountdown > 0, !Task.isCancelled, self.showAd {
@@ -314,6 +348,7 @@ final class PlayerViewModel: ObservableObject {
         clearAd()
         player?.pause()
         player = nil
+        isPlaying = false
     }
 
     private func playMainStream() async {
@@ -352,6 +387,7 @@ final class PlayerViewModel: ObservableObject {
             await player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         }
         player?.play()
+        isPlaying = true
         if let t = authToken, !t.isEmpty {
             if let i = try? await APIClient.shared.getEpisodeInteraction(episodeId: ep.id, token: t) {
                 self.liked = i.liked
@@ -403,6 +439,7 @@ final class PlayerViewModel: ObservableObject {
         }
         timeObserver = nil
         playbackProgress = 0
+        isPlaying = false
     }
 
     private func grantTemporaryUnlock(_ episodeId: Int64) {
