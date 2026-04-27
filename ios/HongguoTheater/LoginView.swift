@@ -12,6 +12,7 @@ struct LoginView: View {
     @State private var busy = false
     @State private var message: String?
     @State private var codeCooldown = 0
+    @State private var hgDialog: HGDialog?
 
     var body: some View {
         NavigationStack {
@@ -42,13 +43,15 @@ struct LoginView: View {
                     }
                 }
             }
-            .alert("提示", isPresented: Binding(
-                get: { message != nil },
-                set: { if !$0 { message = nil } }
-            )) {
-                Button("确定", role: .cancel) { message = nil }
-            } message: {
-                Text(message ?? "")
+            .onChange(of: message) { text in
+                guard let text else { return }
+                hgDialog = HGDialog(
+                    title: "提示",
+                    message: text,
+                    primaryTitle: "确定",
+                    informStyle: true,
+                    onPrimary: { message = nil }
+                )
             }
             .navigationTitle(isLogin ? "登录" : "注册")
             .toolbar {
@@ -57,6 +60,7 @@ struct LoginView: View {
                 }
             }
         }
+        .hgDialog($hgDialog)
     }
 
     private func sendCode() async {

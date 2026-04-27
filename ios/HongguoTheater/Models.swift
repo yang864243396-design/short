@@ -161,6 +161,21 @@ struct RechargePackagesEnvelope: Codable, Hashable, Sendable {
     let payOptions: [PayProductItem]
     let lubzfEnabled: Bool
     let simulateAllowed: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case list
+        case payOptions
+        case lubzfEnabled
+        case simulateAllowed
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        list = try c.decodeIfPresent([RechargePackageItem].self, forKey: .list) ?? []
+        payOptions = try c.decodeIfPresent([PayProductItem].self, forKey: .payOptions) ?? []
+        lubzfEnabled = try c.decodeIfPresent(Bool.self, forKey: .lubzfEnabled) ?? false
+        simulateAllowed = try c.decodeIfPresent(Bool.self, forKey: .simulateAllowed) ?? false
+    }
 }
 
 struct RechargeOrderItem: Codable, Hashable, Sendable {

@@ -15,85 +15,147 @@ struct CommentSheetView: View {
     @State private var replyTarget: CommentReplyTarget?
     @State private var replyPages: [Int64: Int] = [:]
     @State private var loadingReplyRoots: Set<Int64> = []
+    @State private var hgDialog: HGDialog?
+    @State private var expandedRootIds: Set<Int64> = []
+    @State private var showLogin = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Text("\(Self.formatCommentCount(initialCommentCount)) 评论")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.onSurface)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.onSurface)
+                        .frame(width: 36, height: 36)
+                }
+            }
+            .padding(16)
+            .background(AppTheme.surface)
+
+            ZStack {
                 if loading, items.isEmpty {
-                    Spacer()
                     ProgressView()
-                    Spacer()
                 } else if items.isEmpty {
-                    Spacer()
-                    Text("暂无评论")
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "text.bubble")
+                            .font(.system(size: 64))
+                            .foregroundStyle(AppTheme.onSurfaceVariant.opacity(0.35))
+                        Text("暂无评论")
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                        Text("快来抢占第一条评论")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.textHint)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
                         ForEach(items) { c in
                             commentThread(c)
-                                .listRowBackground(AppTheme.background)
                         }
                         if hasMore {
                             Color.clear
+                                .frame(height: 1)
                                 .onAppear { Task { await loadPage(reset: false) } }
                         }
                     }
-                    .listStyle(.plain)
+                        .padding(16)
+                    }
                 }
-                if session.isLoggedIn {
-                    if let target = replyTarget {
-                        HStack(spacing: 8) {
-                            Text("回复 @\(target.name)")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.onSurfaceVariant)
-                            Spacer()
-                            Button("取消") { replyTarget = nil }
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(AppTheme.primary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            VStack(spacing: 0) {
+                if let target = replyTarget {
+                    HStack(spacing: 8) {
+                        Text("回复 @\(target.name)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                        Spacer()
+                        Button("取消") { clearReplyTarget() }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.primary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                }
+                HStack(spacing: 8) {
+                    TextField(replyTarget == nil ? "说点什么…" : "回复 @\(replyTarget?.name ?? "用户")", text: $input)
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.onSurface)
+                        .padding(.horizontal, 16)
+                        .frame(height: 40)
+                        .background(AppTheme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Button("发送") {
+                        guard session.isLoggedIn else {
+                            showLogin = true
+                            return
                         }
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(AppTheme.surfaceHigh)
+                        Task { await post() }
                     }
-                    HStack {
-                        TextField(replyTarget == nil ? "说点什么…" : "回复 @\(replyTarget?.name ?? "用户")", text: $input, axis: .vertical)
-                            .textFieldStyle(.roundedBorder)
-                        Button("发送") { Task { await post() } }
-                            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    .padding()
-                } else {
-                    Text("登录后发表评论")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 8)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 36)
+                    .background(AppTheme.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+                .padding(8)
             }
-            .navigationTitle("\(Self.formatCommentCount(initialCommentCount)) 评论")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
-                }
-            }
+            .background(AppTheme.surfaceHigh)
         }
+        .background(AppTheme.surface)
+        .presentationDetents([.fraction(0.5)])
+        .presentationDragIndicator(.hidden)
         .task { await loadPage(reset: true) }
-        .alert("提示", isPresented: Binding(
-            get: { actionError != nil },
-            set: { if !$0 { actionError = nil } }
-        )) {
-            Button("确定", role: .cancel) { actionError = nil }
-        } message: {
-            Text(actionError ?? "")
+        .onChange(of: actionError) { text in
+            guard let text else { return }
+            hgDialog = HGDialog(
+                title: "提示",
+                message: text,
+                primaryTitle: "确定",
+                informStyle: true,
+                onPrimary: { actionError = nil }
+            )
         }
+        .sheet(isPresented: $showLogin) {
+            LoginView()
+                .environmentObject(session)
+        }
+        .hgDialog($hgDialog)
     }
 
     private func commentThread(_ root: CommentItem) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             commentRow(root, root: root, isReply: false)
             let replies = root.replies ?? []
-            if !replies.isEmpty {
+            if !expandedRootIds.contains(root.id), hasReplies(root) {
+                Button {
+                    expandRoot(root)
+                } label: {
+                    HStack(spacing: 6) {
+                        Rectangle()
+                            .frame(width: 24, height: 1)
+                            .foregroundStyle(AppTheme.outline.opacity(0.5))
+                        Text("展开 \(replyExpandCount(root)) 条回复")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 52)
+            } else if expandedRootIds.contains(root.id), !replies.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(replies) { reply in
                         commentRow(reply, root: root, isReply: true)
@@ -114,71 +176,112 @@ struct CommentSheetView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.leading, 18)
-            } else if (root.replyCount ?? 0) > 0 {
-                Button {
-                    Task { await loadReplies(root: root, reset: true) }
-                } label: {
-                    HStack(spacing: 6) {
-                        Rectangle()
-                            .frame(width: 24, height: 1)
-                            .foregroundStyle(AppTheme.outline)
-                        Text("展开 \(root.replyCount ?? 0) 条回复")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.onSurfaceVariant)
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, 18)
+                .padding(.leading, 52)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
     }
 
     private func commentRow(_ comment: CommentItem, root: CommentItem, isReply: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(comment.displayName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.onSurface)
-                if isReply, let name = comment.replyToNickname, !name.isEmpty {
-                    Text("回复 @\(name)")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.onSurfaceVariant)
-                }
-                Spacer()
-                if session.isLoggedIn {
+        HStack(alignment: .top, spacing: 10) {
+            commentAvatar(comment)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(commentName(comment, isReply: isReply))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.onSurface)
+                            .lineLimit(1)
+                    }
+                    Spacer()
                     Button {
+                        guard session.isLoggedIn else {
+                            showLogin = true
+                            return
+                        }
                         Task { await like(comment) }
                     } label: {
                         HStack(spacing: 2) {
                             Image(systemName: comment.isLiked ? "heart.fill" : "heart")
-                                .foregroundStyle(comment.isLiked ? Color.red : AppTheme.onSurfaceVariant)
+                                .font(.caption)
+                                .foregroundStyle(comment.isLiked ? AppTheme.primary : AppTheme.textHint)
                             Text("\(comment.likesCount)")
-                                .foregroundStyle(AppTheme.onSurfaceVariant)
+                                .foregroundStyle(comment.isLiked ? AppTheme.primary : AppTheme.textHint)
                         }
                         .font(.caption)
                     }
                     .buttonStyle(.plain)
                 }
-            }
-            Text(comment.content)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.onSurface)
-            HStack(spacing: 14) {
-                Text(comment.displayTime)
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.onSurfaceVariant)
-                if session.isLoggedIn {
+                Text(comment.content)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.onSurface)
+                    .lineLimit(isReply ? 4 : nil)
+                HStack(spacing: 14) {
+                    Text(comment.displayTime)
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
                     Button("回复") {
                         replyTarget = CommentReplyTarget(root: root, target: comment)
                     }
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AppTheme.primary)
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
                 }
             }
         }
         .padding(.leading, isReply ? 10 : 0)
+    }
+
+    private func commentAvatar(_ comment: CommentItem) -> some View {
+        ZStack {
+            if let url = ImageURL.resolve(comment.avatar) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Image(systemName: "person.crop.circle.fill")
+                            .resizable()
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                    }
+                }
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
+            }
+        }
+        .frame(width: isSmallAvatar(comment) ? 28 : 36, height: isSmallAvatar(comment) ? 28 : 36)
+        .clipShape(Circle())
+    }
+
+    private func isSmallAvatar(_ comment: CommentItem) -> Bool {
+        (comment.parentId ?? 0) > 0
+    }
+
+    private func commentName(_ comment: CommentItem, isReply: Bool) -> String {
+        if isReply, let to = comment.replyToNickname, !to.isEmpty {
+            return "\(comment.displayName) 回复 \(to)"
+        }
+        return comment.displayName
+    }
+
+    private func hasReplies(_ root: CommentItem) -> Bool {
+        (root.replyCount ?? 0) > 0 || !(root.replies ?? []).isEmpty || root.hasMoreReplies == true
+    }
+
+    private func replyExpandCount(_ root: CommentItem) -> Int {
+        max(root.replyCount ?? 0, (root.replies ?? []).count, root.hasMoreReplies == true ? 1 : 0)
+    }
+
+    private func expandRoot(_ root: CommentItem) {
+        expandedRootIds.insert(root.id)
+        if (root.replies ?? []).isEmpty {
+            Task { await loadReplies(root: root, reset: true) }
+        }
+    }
+
+    private func clearReplyTarget() {
+        replyTarget = nil
     }
 
     private func loadPage(reset: Bool) async {

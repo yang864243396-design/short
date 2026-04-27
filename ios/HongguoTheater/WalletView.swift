@@ -17,6 +17,7 @@ struct WalletView: View {
     @State private var confirmEnvelope: RechargePackagesEnvelope?
     @State private var recharging = false
     @State private var payChecking = false
+    @State private var hgDialog: HGDialog?
 
     var body: some View {
         ScrollView {
@@ -38,65 +39,26 @@ struct WalletView: View {
         }
         .overlay {
             if recharging || payChecking {
-                ZStack {
-                    Color.black.opacity(0.35).ignoresSafeArea()
-                    VStack(spacing: 12) {
-                        ProgressView().tint(AppTheme.primary)
-                        Text(recharging ? "订单提交中，请稍候" : "正在检测支付结果，请稍候")
-                            .font(.subheadline)
-                            .foregroundStyle(AppTheme.onSurface)
-                    }
-                    .padding(20)
-                    .hgCard(fill: AppTheme.surfaceHigh)
-                }
+                HGLoadingDialog(message: recharging ? "订单提交中，请稍候" : "正在检测支付结果，请稍候")
+            }
+            if showPayChannel {
+                payMethodDialog
             }
         }
-        .confirmationDialog("充值套餐", isPresented: Binding(
-            get: { confirmPackage != nil && confirmEnvelope != nil },
-            set: { if !$0 { confirmPackage = nil; confirmEnvelope = nil } }
-        ), titleVisibility: .visible) {
-            Button("确定") {
-                guard let pkg = confirmPackage, let e = confirmEnvelope else { return }
-                confirmPackage = nil
-                confirmEnvelope = nil
-                Task { await buyConfirmed(pkg, e) }
-            }
-            Button("取消", role: .cancel) {
-                confirmPackage = nil
-                confirmEnvelope = nil
-            }
-        } message: {
-            if let pkg = confirmPackage {
-                Text(rechargeConfirmMessage(pkg))
-            }
-        }
-        .confirmationDialog("选择支付方式", isPresented: $showPayChannel, titleVisibility: .visible) {
-            if let e = payChannelEnv {
-                ForEach(e.payOptions.filter(\.enabled), id: \.id) { opt in
-                    Button("\(opt.name) (\(opt.productId))") {
-                        guard let pkg = payChannelPkg else { return }
-                        Task { await executeRechargeOrder(package: pkg, envelope: e, productId: opt.productId) }
-                    }
-                }
-            }
-            Button("取消", role: .cancel) {
-                payChannelPkg = nil
-                payChannelEnv = nil
-            }
-        } message: {
-            Text("请选择聚合支付对应的产品")
+        .onChange(of: message) { text in
+            guard let text else { return }
+            hgDialog = HGDialog(
+                title: "提示",
+                message: text,
+                primaryTitle: "确定",
+                informStyle: true,
+                onPrimary: { message = nil }
+            )
         }
         .navigationDestination(for: WalletTxDest.self) { _ in
             WalletTransactionsView()
         }
-        .alert("提示", isPresented: Binding(
-            get: { message != nil },
-            set: { if !$0 { message = nil } }
-        )) {
-            Button("确定", role: .cancel) { message = nil }
-        } message: {
-            Text(message ?? "")
-        }
+        .hgDialog($hgDialog)
     }
 
     @ViewBuilder
@@ -154,6 +116,19 @@ struct WalletView: View {
                         Button {
                             confirmPackage = pkg
                             confirmEnvelope = e
+                            hgDialog = HGDialog(
+                                title: "充值套餐",
+                                message: rechargeConfirmMessage(pkg),
+                                primaryTitle: "确定",
+                                secondaryTitle: "取消",
+                                onPrimary: {
+                                    Task { await buyConfirmed(pkg, e) }
+                                },
+                                onSecondary: {
+                                    confirmPackage = nil
+                                    confirmEnvelope = nil
+                                }
+                            )
                         } label: {
                             VStack(spacing: 6) {
                                 Text(pkg.name)
@@ -211,6 +186,63 @@ struct WalletView: View {
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
                 .stroke(Color.white.opacity(0.15), lineWidth: 1)
         )
+    }
+
+    private var payMethodDialog: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(spacing: 0) {
+                Text("选择支付方式")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AppTheme.onSurface)
+                Text("请选择聚合支付对应的产品")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(red: 0.631, green: 0.631, blue: 0.631))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 14)
+                if let e = payChannelEnv {
+                    VStack(spacing: 10) {
+                        ForEach(e.payOptions.filter(\.enabled), id: \.id) { opt in
+                            Button {
+                                guard let pkg = payChannelPkg else { return }
+                                showPayChannel = false
+                                Task { await executeRechargeOrder(package: pkg, envelope: e, productId: opt.productId) }
+                            } label: {
+                                Text("\(opt.name) (\(opt.productId))")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
+                                    .frame(maxWidth: .infinity, minHeight: 48)
+                                    .background(Color(red: 1, green: 0.549, blue: 0.451))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.top, 24)
+                }
+                Button {
+                    showPayChannel = false
+                    payChannelPkg = nil
+                    payChannelEnv = nil
+                } label: {
+                    Text("取消")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color(red: 0.922, green: 0.922, blue: 0.961))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Color(red: 0.173, green: 0.173, blue: 0.18))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 12)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 28)
+            .padding(.bottom, 24)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.118))
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .padding(.horizontal, 24)
+        }
+        .zIndex(999)
     }
 
     private func reload() async {

@@ -12,6 +12,7 @@ struct PlayerView: View {
     @State private var descriptionExpanded = false
     @State private var showWallet = false
     @State private var showLogin = false
+    @State private var hgDialog: HGDialog?
 
     init(dramaId: Int64, episodeId: Int64?) {
         _vm = StateObject(wrappedValue: PlayerViewModel(dramaId: dramaId, startEpisodeId: episodeId))
@@ -61,6 +62,7 @@ struct PlayerView: View {
 
                 if needsUnlock, !vm.showAd {
                     Color.black.opacity(0.72).ignoresSafeArea()
+                        .zIndex(20)
                     VStack(spacing: 14) {
                         Text("解锁观看")
                             .font(.headline)
@@ -87,6 +89,7 @@ struct PlayerView: View {
                     .background(AppTheme.surface.opacity(0.96))
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .padding()
+                    .zIndex(21)
                 }
 
                 if vm.showAd {
@@ -115,7 +118,7 @@ struct PlayerView: View {
                     }
                 }
 
-                if !vm.showAd {
+                if !vm.showAd, !needsUnlock {
                 VStack {
                     HStack {
                         Button {
@@ -238,25 +241,40 @@ struct PlayerView: View {
                 Task { await vm.finishAdAndPlayMain() }
             }
         }
-        .alert("提示", isPresented: Binding(
-            get: { vm.loadError != nil },
-            set: { if !$0 { vm.loadError = nil } }
-        )) {
-            Button("确定", role: .cancel) { vm.loadError = nil }
-        } message: {
-            Text(vm.loadError ?? "")
+        .onChange(of: vm.loadError) { error in
+            guard let error else { return }
+            hgDialog = HGDialog(
+                title: "提示",
+                message: error,
+                primaryTitle: "确定",
+                informStyle: true,
+                onPrimary: { vm.loadError = nil }
+            )
         }
-        .alert("提示", isPresented: $vm.confirmAbandonAd) {
-            Button("继续观看") { vm.continueAd() }
-            Button("放弃解锁", role: .destructive) { vm.abandonAdUnlock() }
-        } message: {
-            Text("关闭广告将无法获得本集 10 分钟观看权限，确定要放弃吗？")
+        .onChange(of: vm.confirmAbandonAd) { show in
+            guard show else { return }
+            hgDialog = HGDialog(
+                title: "提示",
+                message: "关闭广告将无法获得本集 10 分钟观看权限，确定要放弃吗？",
+                primaryTitle: "继续观看",
+                secondaryTitle: "放弃解锁",
+                onPrimary: { vm.continueAd() },
+                onSecondary: { vm.abandonAdUnlock() }
+            )
         }
-        .alert("提示", isPresented: $vm.rechargePrompt) {
-            Button("去充值") { showWallet = true }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("金币余额不足，是否前往充值？")
+        .onChange(of: vm.rechargePrompt) { show in
+            guard show else { return }
+            hgDialog = HGDialog(
+                title: "提示",
+                message: "金币余额不足，是否前往充值？",
+                primaryTitle: "去充值",
+                secondaryTitle: "取消",
+                onPrimary: {
+                    vm.rechargePrompt = false
+                    showWallet = true
+                },
+                onSecondary: { vm.rechargePrompt = false }
+            )
         }
         .sheet(isPresented: $showWallet) {
             NavigationStack {
@@ -280,45 +298,69 @@ struct PlayerView: View {
             }
         }
         .sheet(isPresented: $showEpisodes) {
-            NavigationStack {
-                VStack(spacing: 12) {
-                    episodeGroupTabs
-                    ScrollView {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                            ForEach(currentEpisodeGroup) { ep in
-                                Button {
-                                    vm.selectEpisode(ep)
-                                    showEpisodes = false
-                                } label: {
-                                    VStack(spacing: 4) {
-                                        Text("\(ep.episodeNumber)")
-                                            .font(.subheadline.weight(.semibold))
-                                        if !(ep.isFree ?? true), !(ep.coinUnlocked ?? false) {
-                                            Image(systemName: "lock.fill")
-                                                .font(.caption2)
-                                                .foregroundStyle(AppTheme.onSurfaceVariant)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: 46)
-                                    .foregroundStyle(ep.id == vm.current?.id ? AppTheme.primary : AppTheme.onSurface)
-                                    .background(ep.id == vm.current?.id ? AppTheme.primary.opacity(0.16) : AppTheme.surfaceHigh)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal)
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(vm.drama?.title ?? vm.current?.drama?.title ?? "")
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.onSurface)
+                            .lineLimit(1)
+                        Text("共 \(vm.episodes.count) 集")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                    }
+                    Spacer()
+                    Button {
+                        showEpisodes = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(AppTheme.onSurface)
+                            .frame(width: 36, height: 36)
                     }
                 }
-                .navigationTitle("选集")
-                .background(AppTheme.background)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("关闭") { showEpisodes = false }
+                .padding(16)
+
+                episodeGroupTabs
+                    .padding(.bottom, 8)
+
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+                        ForEach(Array(currentEpisodeGroup.enumerated()), id: \.element.id) { localIndex, ep in
+                            let globalIndex = episodeGroupIndex * 40 + localIndex
+                            Button {
+                                vm.selectEpisode(ep)
+                                showEpisodes = false
+                            } label: {
+                                ZStack(alignment: .topTrailing) {
+                                    Text("\(ep.episodeNumber)")
+                                        .font(.subheadline.weight(.semibold))
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                        .foregroundStyle(ep.id == vm.current?.id ? AppTheme.primary : AppTheme.onSurface)
+                                        .background(ep.id == vm.current?.id ? AppTheme.primary.opacity(0.16) : AppTheme.surfaceHigh)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    if !(ep.isFree ?? true), !(ep.coinUnlocked ?? false) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                                            .padding(5)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .id(globalIndex)
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
                 }
             }
+            .frame(height: 400)
+            .background(AppTheme.surface)
+            .presentationDetents([.height(400)])
+            .presentationDragIndicator(.hidden)
         }
+        .hgDialog($hgDialog)
     }
 
     @ViewBuilder

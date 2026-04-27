@@ -15,6 +15,9 @@ struct ProfileView: View {
     @State private var showAdSkipPicker = false
     @State private var adSkipConfigs: [AdSkipConfig] = []
     @State private var adSkipError: String?
+    @State private var adSkipConfirmConfig: AdSkipConfig?
+    @State private var adSkipInsufficientMessage: String?
+    @State private var hgDialog: HGDialog?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -34,13 +37,29 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showLogin) { LoginView().environmentObject(session) }
             .sheet(isPresented: $showAdSkipPicker) { adSkipSheet }
-            .alert("提示", isPresented: Binding(
-                get: { adSkipError != nil },
-                set: { if !$0 { adSkipError = nil } }
-            )) {
-                Button("确定", role: .cancel) { adSkipError = nil }
-            } message: {
-                Text(adSkipError ?? "")
+            .onChange(of: adSkipError) { text in
+                guard let text else { return }
+                hgDialog = HGDialog(
+                    title: "提示",
+                    message: text,
+                    primaryTitle: "确定",
+                    informStyle: true,
+                    onPrimary: { adSkipError = nil }
+                )
+            }
+            .onChange(of: adSkipInsufficientMessage) { text in
+                guard let text else { return }
+                hgDialog = HGDialog(
+                    title: "解锁失败",
+                    message: text,
+                    primaryTitle: "去充值",
+                    secondaryTitle: "取消",
+                    onPrimary: {
+                        adSkipInsufficientMessage = nil
+                        path.append(WalletDest())
+                    },
+                    onSecondary: { adSkipInsufficientMessage = nil }
+                )
             }
             .navigationDestination(for: PlayerEntry.self) { e in
                 PlayerView(dramaId: e.dramaId, episodeId: e.episodeId)
@@ -48,6 +67,7 @@ struct ProfileView: View {
             .navigationDestination(for: WalletDest.self) { _ in
                 WalletView()
             }
+            .hgDialog($hgDialog)
         }
     }
 
@@ -295,7 +315,18 @@ struct ProfileView: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
                     ForEach(resolvePurchaseConfigs(), id: \.id) { c in
                         Button {
-                            Task { await buyAdSkip(c) }
+                            adSkipConfirmConfig = c
+                            hgDialog = HGDialog(
+                                title: "确认支付",
+                                message: "购买「\(adSkipTierTitle(c))」\n需支付：\(c.priceCoins) 金币\n当前余额：\(adSkip?.coins ?? user?.coins ?? 0) 金币",
+                                primaryTitle: "确认支付",
+                                secondaryTitle: "取消",
+                                onPrimary: {
+                                    adSkipConfirmConfig = nil
+                                    Task { await validateConfigThenPurchase(c) }
+                                },
+                                onSecondary: { adSkipConfirmConfig = nil }
+                            )
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(c.name)
@@ -304,7 +335,7 @@ struct ProfileView: View {
                                 Text("\(c.priceCoins) 金币")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(AppTheme.primary)
-                                Text(c.typeLower == "count" ? "\(c.skipCount) 次免广告" : "\(c.durationHours) 小时权益")
+                                Text(adSkipTierTitle(c))
                                     .font(.caption2)
                                     .foregroundStyle(AppTheme.onSurfaceVariant)
                             }
@@ -329,17 +360,70 @@ struct ProfileView: View {
 
     private func resolvePurchaseConfigs() -> [AdSkipConfig] {
         guard let a = adSkip else { return adSkipConfigs }
-        if a.adSkipActive, let b = a.boosterConfigs, !b.isEmpty { return b }
+        if a.adSkipActive {
+            if let b = a.boosterConfigs, !b.isEmpty { return b }
+            let booster = (a.configs ?? adSkipConfigs).filter { $0.typeLower == "booster" }
+            if !booster.isEmpty { return booster }
+            return a.configs ?? adSkipConfigs
+        }
         if let t = a.timeConfigs, !t.isEmpty { return t }
         return a.configs ?? adSkipConfigs
+    }
+
+    private func allAdSkipConfigs(_ status: AdSkipStatus) -> [AdSkipConfig] {
+        var map: [Int64: AdSkipConfig] = [:]
+        for c in status.configs ?? [] { map[c.id] = c }
+        for c in status.timeConfigs ?? [] { map[c.id] = c }
+        for c in status.boosterConfigs ?? [] { map[c.id] = c }
+        return Array(map.values)
+    }
+
+    private func adSkipTierTitle(_ c: AdSkipConfig) -> String {
+        if c.typeLower == "booster" {
+            return "\(c.skipCount) 次免广告"
+        }
+        if c.durationHours >= 24, c.durationHours % 24 == 0 {
+            return "\(c.durationHours / 24)天 · \(c.skipCount) 次"
+        }
+        return "\(c.durationHours)小时 · \(c.skipCount) 次"
     }
 
     private func loadAdSkipForPicker() async {
         guard session.isLoggedIn else { return }
         do {
             adSkip = try await APIClient.shared.getAdSkipStatus(token: session.token)
-            adSkipConfigs = adSkip?.configs ?? []
+            if let adSkip {
+                adSkipConfigs = allAdSkipConfigs(adSkip)
+            }
         } catch { }
+    }
+
+    private func validateConfigThenPurchase(_ selected: AdSkipConfig) async {
+        do {
+            let latest = try await APIClient.shared.getAdSkipStatus(token: session.token)
+            adSkip = latest
+            adSkipConfigs = allAdSkipConfigs(latest)
+            guard let fresh = allAdSkipConfigs(latest).first(where: { $0.id == selected.id }) else {
+                adSkipError = "所选套餐已下架或不存在，已为您同步最新套餐列表。"
+                showAdSkipPicker = true
+                return
+            }
+            if fresh.priceCoins != selected.priceCoins
+                || fresh.durationHours != selected.durationHours
+                || fresh.skipCount != selected.skipCount
+            {
+                adSkipError = "「\(adSkipTierTitle(fresh))」套餐信息已更新，请按最新价格 \(fresh.priceCoins) 金币重新选择购买。"
+                showAdSkipPicker = true
+                return
+            }
+            if latest.coins < fresh.priceCoins {
+                adSkipInsufficientMessage = "金币余额不足，无法解锁。\n需要 \(fresh.priceCoins) 金币，当前 \(latest.coins) 金币。"
+                return
+            }
+            await buyAdSkip(fresh)
+        } catch {
+            adSkipError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     private func buyAdSkip(_ c: AdSkipConfig) async {
