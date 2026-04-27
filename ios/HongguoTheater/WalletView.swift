@@ -138,7 +138,7 @@ struct WalletView: View {
             if let url = r.payUrl, !url.isEmpty, let u = URL(string: url) {
                 payQueryMch = r.mchOrderNo ?? r.order?.mchOrderNo
                 payQueryPayId = r.order?.payOrderId
-                UIApplication.shared.open(u)
+                await UIApplication.shared.open(u)
                 message = "已跳转支付，返回本应用后将自动查单；也可稍后在流水中确认。"
             } else if let oid = r.order?.id, e.simulateAllowed {
                 try await APIClient.shared.simulateRechargePay(orderId: oid, token: session.token)
@@ -206,7 +206,7 @@ struct WalletTransactionsView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(tx.title)
-                            Text(tx.createdAt)
+                            Text(tx.createdAt ?? "")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
