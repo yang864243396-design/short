@@ -14,8 +14,18 @@ struct PlayerView: View {
     @State private var showLogin = false
     @State private var hgDialog: HGDialog?
 
-    init(dramaId: Int64, episodeId: Int64?) {
-        _vm = StateObject(wrappedValue: PlayerViewModel(dramaId: dramaId, startEpisodeId: episodeId))
+    init(
+        dramaId: Int64,
+        episodeId: Int64?,
+        handoffStreamURL: URL? = nil,
+        handoffPositionSeconds: Double = 0
+    ) {
+        _vm = StateObject(wrappedValue: PlayerViewModel(
+            dramaId: dramaId,
+            startEpisodeId: episodeId,
+            handoffStreamURL: handoffStreamURL,
+            handoffPositionSeconds: handoffPositionSeconds
+        ))
     }
 
     private var needsUnlock: Bool {
@@ -199,6 +209,23 @@ struct PlayerView: View {
                     .padding()
                     .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
                 }
+                }
+
+                if !vm.showAd, !needsUnlock {
+                    VStack {
+                        Spacer()
+                        GeometryReader { bar in
+                            ZStack(alignment: .leading) {
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.18))
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.96))
+                                    .frame(width: bar.size.width * vm.playbackProgress)
+                            }
+                        }
+                        .frame(height: 2)
+                    }
+                    .ignoresSafeArea(edges: .bottom)
                 }
 
                 ForEach(likeBursts) { burst in

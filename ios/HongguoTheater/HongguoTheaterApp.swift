@@ -10,6 +10,9 @@ struct HongguoTheaterApp: App {
                 .environmentObject(session)
                 .tint(AppTheme.primary)
                 .preferredColorScheme(.dark)
+                .task {
+                    await AdPreloadManager.shared.warmupIfNeeded(isLoggedIn: session.isLoggedIn)
+                }
         }
     }
 }

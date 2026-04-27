@@ -12,6 +12,7 @@ final class PlayerViewModel: ObservableObject {
     @Published var collected: Bool = false
     @Published var likeCount: Int64 = 0
     @Published var commentCount: Int64 = 0
+    @Published var playbackProgress: Double = 0
     @Published var loadError: String?
     @Published var busy: Bool = false
 
@@ -27,17 +28,29 @@ final class PlayerViewModel: ObservableObject {
 
     let dramaId: Int64
     private let startEpisodeId: Int64?
+    private let handoffEpisodeId: Int64?
+    private let handoffStreamURL: URL?
+    private let handoffPositionSeconds: Double
     var authToken: String?
     private var adEndObserver: NSObjectProtocol?
     private var adTimeoutTask: Task<Void, Never>?
     private var adCountdownTask: Task<Void, Never>?
     private var playTask: Task<Void, Never>?
+    private var timeObserver: Any?
     private var adGrantsTemporaryUnlock = false
     private var temporaryUnlockExpiry: [Int64: Date] = [:]
 
-    init(dramaId: Int64, startEpisodeId: Int64?) {
+    init(
+        dramaId: Int64,
+        startEpisodeId: Int64?,
+        handoffStreamURL: URL? = nil,
+        handoffPositionSeconds: Double = 0
+    ) {
         self.dramaId = dramaId
         self.startEpisodeId = startEpisodeId
+        self.handoffEpisodeId = startEpisodeId
+        self.handoffStreamURL = handoffStreamURL
+        self.handoffPositionSeconds = handoffPositionSeconds
     }
 
     private func shouldPaywall(_ ep: Episode) -> Bool {
@@ -76,6 +89,7 @@ final class PlayerViewModel: ObservableObject {
 
     func selectEpisode(_ ep: Episode) {
         playTask?.cancel()
+        clearTimeObserver()
         clearAd()
         current = ep
         syncCountsFromCurrent()
@@ -153,6 +167,7 @@ final class PlayerViewModel: ObservableObject {
     private func runAdThenMain(grantsTemporaryUnlock: Bool) async {
         clearAd()
         player?.pause()
+        clearTimeObserver()
         player = nil
         guard let ep = current else { return }
         if shouldPaywall(ep), !grantsTemporaryUnlock { return }
@@ -304,15 +319,38 @@ final class PlayerViewModel: ObservableObject {
     private func playMainStream() async {
         if Task.isCancelled { return }
         clearAd()
-        guard let ep = current, let u = PlaybackURL.url(for: ep) else { return }
+        guard let ep = current else { return }
+        let u: URL?
+        if ep.id == handoffEpisodeId, let handoffStreamURL {
+            u = handoffStreamURL
+        } else {
+            u = PlaybackURL.url(for: ep)
+        }
+        guard let u else { return }
         var headers: [String: String] = [:]
         if let t = authToken, !t.isEmpty {
             headers["Authorization"] = "Bearer \(t)"
         }
-        let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        let asset = AVURLAsset(url: u, options: options)
+        let playableURL = await VideoCacheManager.shared.playableURL(for: u, headers: headers)
+        let options: [String: Any]? = playableURL.isFileURL || headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
+        let asset = AVURLAsset(url: playableURL, options: options)
         let item = AVPlayerItem(asset: asset)
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] note in
+            Task { @MainActor in
+                let error = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription
+                self?.loadError = error ?? "视频播放失败，请重试"
+            }
+        }
         player = AVPlayer(playerItem: item)
+        installTimeObserver()
+        if ep.id == handoffEpisodeId, handoffPositionSeconds > 0 {
+            let target = CMTime(seconds: handoffPositionSeconds, preferredTimescale: 600)
+            player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
         player?.play()
         if let t = authToken, !t.isEmpty {
             if let i = try? await APIClient.shared.getEpisodeInteraction(episodeId: ep.id, token: t) {
@@ -321,6 +359,7 @@ final class PlayerViewModel: ObservableObject {
             }
             _ = try? await APIClient.shared.recordHistory(episodeId: ep.id, token: t)
         }
+        prefetchNextEpisode(after: ep, headers: headers)
     }
 
     private func clearAd() {
@@ -341,6 +380,31 @@ final class PlayerViewModel: ObservableObject {
         showAd = false
     }
 
+    private func installTimeObserver() {
+        clearTimeObserver()
+        guard let player else { return }
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            guard let self else { return }
+            let duration = player.currentItem?.duration.seconds ?? 0
+            guard duration.isFinite, duration > 0 else {
+                self.playbackProgress = 0
+                return
+            }
+            self.playbackProgress = min(1, max(0, time.seconds / duration))
+        }
+    }
+
+    private func clearTimeObserver() {
+        if let timeObserver, let player {
+            player.removeTimeObserver(timeObserver)
+        }
+        timeObserver = nil
+        playbackProgress = 0
+    }
+
     private func grantTemporaryUnlock(_ episodeId: Int64) {
         temporaryUnlockExpiry[episodeId] = Date().addingTimeInterval(10 * 60)
     }
@@ -348,6 +412,15 @@ final class PlayerViewModel: ObservableObject {
     private func syncCountsFromCurrent() {
         likeCount = current?.likeCount ?? 0
         commentCount = current?.commentCount ?? 0
+    }
+
+    private func prefetchNextEpisode(after ep: Episode, headers: [String: String]) {
+        guard let idx = episodes.firstIndex(where: { $0.id == ep.id }) else { return }
+        let next = idx + 1
+        guard episodes.indices.contains(next), let url = PlaybackURL.url(for: episodes[next]) else { return }
+        Task {
+            await VideoCacheManager.shared.prefetch(url, headers: headers)
+        }
     }
 
     private func isTemporarilyUnlocked(_ episodeId: Int64) -> Bool {

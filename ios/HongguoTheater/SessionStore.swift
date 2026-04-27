@@ -45,5 +45,8 @@ final class SessionStore: ObservableObject {
         d.removeObject(forKey: K.token)
         d.removeObject(forKey: K.userId)
         d.removeObject(forKey: K.username)
+        Task {
+            await VideoCacheManager.shared.clearAll()
+        }
     }
 }

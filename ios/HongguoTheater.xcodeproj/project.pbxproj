@@ -29,6 +29,8 @@
 		B00000000000000000000014 /* VerticalPagingScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000014 /* VerticalPagingScrollView.swift */; };
 		B00000000000000000000015 /* WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000015 /* WalletView.swift */; };
 		B00000000000000000000017 /* HGDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000019 /* HGDialog.swift */; };
+		B00000000000000000000018 /* VideoCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001A /* VideoCacheManager.swift */; };
+		B00000000000000000000019 /* AdPreloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001B /* AdPreloadManager.swift */; };
 		B00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000016 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -55,6 +57,8 @@
 		F00000000000000000000014 /* VerticalPagingScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerticalPagingScrollView.swift; sourceTree = "<group>"; };
 		F00000000000000000000015 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
 		F00000000000000000000019 /* HGDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HGDialog.swift; sourceTree = "<group>"; };
+		F0000000000000000000001A /* VideoCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCacheManager.swift; sourceTree = "<group>"; };
+		F0000000000000000000001B /* AdPreloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdPreloadManager.swift; sourceTree = "<group>"; };
 		F00000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F00000000000000000000018 /* HongguoTheater.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HongguoTheater.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -83,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				F00000000000000000000001 /* APIClient.swift */,
+				F0000000000000000000001B /* AdPreloadManager.swift */,
 				F00000000000000000000002 /* AppConfig.swift */,
 				F00000000000000000000003 /* AppTheme.swift */,
 				F00000000000000000000004 /* CommentSheetView.swift */,
@@ -103,6 +108,7 @@
 				F00000000000000000000012 /* SearchView.swift */,
 				F00000000000000000000013 /* SessionStore.swift */,
 				F00000000000000000000014 /* VerticalPagingScrollView.swift */,
+				F0000000000000000000001A /* VideoCacheManager.swift */,
 				F00000000000000000000015 /* WalletView.swift */,
 				F00000000000000000000016 /* Assets.xcassets */,
 				F00000000000000000000017 /* Info.plist */,
@@ -190,6 +196,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B00000000000000000000001 /* APIClient.swift in Sources */,
+				B00000000000000000000019 /* AdPreloadManager.swift in Sources */,
 				B00000000000000000000002 /* AppConfig.swift in Sources */,
 				B00000000000000000000003 /* AppTheme.swift in Sources */,
 				B00000000000000000000004 /* CommentSheetView.swift in Sources */,
@@ -210,6 +217,7 @@
 				B00000000000000000000012 /* SearchView.swift in Sources */,
 				B00000000000000000000013 /* SessionStore.swift in Sources */,
 				B00000000000000000000014 /* VerticalPagingScrollView.swift in Sources */,
+				B00000000000000000000018 /* VideoCacheManager.swift in Sources */,
 				B00000000000000000000015 /* WalletView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

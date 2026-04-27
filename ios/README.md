@@ -24,7 +24,7 @@ open HongguoTheater.xcodeproj
 - 开发：`http://192.168.20.2:8080/api/v1/`
 - 生产：`http://api2.h6ign.com/api/v1/`
 
-已开启 `NSAllowsArbitraryLoads` 以便 HTTP 调试；上架前请改为 HTTPS + ATS 白名单。
+已按正式域名配置 ATS 白名单：`api2.h6ign.com` 允许 HTTP，媒体加载保留 `NSAllowsArbitraryLoadsInMedia`；上架前建议整体切 HTTPS。
 
 ## 与 Android 的差异说明
 

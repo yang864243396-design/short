@@ -25,6 +25,7 @@ struct FeedView: View {
     @State private var commentSheetEpisode: Episode?
     @State private var playerEntry: FeedPlayerEntry?
     @State private var expandedEpisodeIds: Set<Int64> = []
+    @State private var playbackError: String?
 
     private static let pageSize = 10
 
@@ -118,16 +119,36 @@ struct FeedView: View {
                 Task { await loadFeed(reset: true) }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemFailedToPlayToEndTime)) { note in
+            guard player?.currentItem === note.object as? AVPlayerItem else { return }
+            playbackError = ((note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription)
+                ?? "视频播放失败，请重试"
+        }
         .sheet(item: $commentSheetEpisode) { ep in
             CommentSheetView(episodeId: ep.id, initialCommentCount: ep.commentCount ?? 0)
                 .environmentObject(session)
         }
         .fullScreenCover(item: $playerEntry) { entry in
             NavigationStack {
-                PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
+                PlayerView(
+                    dramaId: entry.dramaId,
+                    episodeId: entry.episodeId,
+                    handoffStreamURL: entry.streamURL,
+                    handoffPositionSeconds: entry.positionSeconds
+                )
                     .environmentObject(session)
             }
         }
+        .hgDialog(Binding(
+            get: {
+                playbackError.map {
+                    HGDialog(title: "提示", message: $0, primaryTitle: "确定", informStyle: true) {
+                        playbackError = nil
+                    }
+                }
+            },
+            set: { if $0 == nil { playbackError = nil } }
+        ))
     }
 
     @ViewBuilder
@@ -147,10 +168,14 @@ struct FeedView: View {
                     feedTags(ep)
                     descriptionBlock(ep)
                     Button {
+                        let currentURL = PlaybackURL.url(for: ep)
                         playerEntry = FeedPlayerEntry(
                             dramaId: PlaybackURL.dramaId(episode: ep),
-                            episodeId: ep.id
+                            episodeId: ep.id,
+                            streamURL: currentURL,
+                            positionSeconds: player?.currentTime().seconds ?? 0
                         )
+                        player?.pause()
                     } label: {
                         Text("看全 \(ep.drama?.totalEpisodes ?? 0) 集")
                             .font(.caption.weight(.semibold))
@@ -274,14 +299,26 @@ struct FeedView: View {
         if session.isLoggedIn, !session.token.isEmpty {
             headers["Authorization"] = "Bearer \(session.token)"
         }
-        let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        let asset = AVURLAsset(url: u, options: options)
-        let item = AVPlayerItem(asset: asset)
-        player = AVPlayer(playerItem: item)
-        if parentTab == .feed, scenePhase == .active {
-            player?.play()
+        Task { @MainActor in
+            let playableURL = await VideoCacheManager.shared.playableURL(for: u, headers: headers)
+            let options: [String: Any]? = playableURL.isFileURL || headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
+            let asset = AVURLAsset(url: playableURL, options: options)
+            let item = AVPlayerItem(asset: asset)
+            player = AVPlayer(playerItem: item)
+            if parentTab == .feed, scenePhase == .active {
+                player?.play()
+            }
+            prefetchNeighbor(after: currentIndex, headers: headers)
         }
         Task { await loadInteractionIfNeeded(for: ep) }
+    }
+
+    private func prefetchNeighbor(after index: Int, headers: [String: String]) {
+        let next = index + 1
+        guard episodes.indices.contains(next), let url = PlaybackURL.url(for: episodes[next]) else { return }
+        Task {
+            await VideoCacheManager.shared.prefetch(url, headers: headers)
+        }
     }
 
     private func tryScrollAfterDrama() {
@@ -465,6 +502,8 @@ struct FeedView: View {
 private struct FeedPlayerEntry: Identifiable {
     let dramaId: Int64
     let episodeId: Int64?
+    let streamURL: URL?
+    let positionSeconds: Double
 
     var id: String { "\(dramaId)-\(episodeId ?? 0)" }
 }

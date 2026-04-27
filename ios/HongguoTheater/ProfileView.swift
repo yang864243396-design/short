@@ -535,6 +535,12 @@ struct ProfileView: View {
             showAdSkipPicker = false
             await refreshHeader()
             NotificationCenter.default.post(name: .hgAdSkipPurchased, object: nil)
+            hgDialog = HGDialog(
+                title: "解锁成功",
+                message: "免广告权益已生效，可在个人中心查看。",
+                primaryTitle: "我知道了",
+                informStyle: true
+            )
         } catch {
             adSkipError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
