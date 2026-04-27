@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 对齐 Android `HomeFragment`：顶部搜索、轮播、必看、热播榜入口、推荐、分类筛选与列表分页。
+/// 对齐 Android 首页主结构：搜索、Banner、今日热播榜、剧集 Tab、剧集列表。
 struct HomeView: View {
     @EnvironmentObject private var session: SessionStore
     var onOpenFeedAfterDrama: (Int64) -> Void = { _ in }
@@ -24,11 +24,7 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     searchBar
                     bannerSection
-                    sectionHeader("必看")
-                    mustWatchRow
                     hotRankRow
-                    sectionHeader("为你推荐")
-                    recommendRow
                     categoryChips
                     errorBanner
                     dramaGrid
@@ -114,29 +110,6 @@ struct HomeView: View {
         }
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.headline)
-            .foregroundStyle(AppTheme.onSurface)
-            .padding(.horizontal)
-    }
-
-    @ViewBuilder
-    private var mustWatchRow: some View {
-        let list = home?.mustWatch ?? []
-        if !list.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(list) { d in
-                        dramaCoverCard(d)
-                            .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
-                    }
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-
     @ViewBuilder
     private var hotRankRow: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -170,22 +143,6 @@ struct HomeView: View {
                         .padding(8)
                         .hgCard(radius: 10, fill: AppTheme.surface)
                         .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
-                    }
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var recommendRow: some View {
-        let list = home?.recommend ?? []
-        if !list.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(list) { d in
-                        dramaCoverCard(d)
-                            .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
                     }
                 }
                 .padding(.horizontal)
@@ -266,32 +223,9 @@ struct HomeView: View {
         }
     }
 
-    private func dramaCoverCard(_ d: Drama) -> some View {
-        VStack(alignment: .leading) {
-            if let u = ImageURL.resolve(d.coverUrl) {
-                AsyncImage(url: u) { p in
-                    p.resizable().scaledToFill()
-                } placeholder: { Color(white: 0.2) }
-                .frame(width: 110, height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            Text(d.title ?? "")
-                .lineLimit(1)
-                .font(.caption)
-                .foregroundStyle(AppTheme.onSurface)
-        }
-        .frame(width: 110, alignment: .leading)
-    }
-
     private func dramaMiniRow(_ d: Drama) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            if let u = ImageURL.resolve(d.coverUrl) {
-                AsyncImage(url: u) { p in
-                    p.resizable().scaledToFill()
-                } placeholder: { Color(white: 0.2) }
-                .frame(width: 72, height: 100)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
+            HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 72, height: 100, radius: 6)
             VStack(alignment: .leading, spacing: 4) {
                 Text(d.title ?? "")
                     .font(.subheadline.weight(.semibold))

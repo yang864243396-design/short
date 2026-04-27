@@ -8,88 +8,72 @@ struct SearchView: View {
     @State private var hotRanks: [RankItem] = []
     @State private var results: [Drama] = []
     @State private var loading = false
-    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
-                if !history.isEmpty {
-                    Section {
-                        ForEach(history, id: \.self) { h in
-                            Button(h) {
-                                keyword = h
-                                Task { await runSearch() }
-                            }
+        List {
+            if !history.isEmpty {
+                Section {
+                    ForEach(history, id: \.self) { h in
+                        Button(h) {
+                            keyword = h
+                            Task { await runSearch() }
                         }
-                    } header: {
-                        HStack {
-                            Text("搜索历史")
-                            Spacer()
-                            if session.isLoggedIn {
-                                Button("清空", role: .destructive) { Task { await clearHistory() } }
-                            }
+                    }
+                } header: {
+                    HStack {
+                        Text("搜索历史")
+                        Spacer()
+                        if session.isLoggedIn {
+                            Button("清空", role: .destructive) { Task { await clearHistory() } }
                         }
                     }
                 }
-                if results.isEmpty, !hotRanks.isEmpty {
-                    Section("热播榜") {
-                        ForEach(Array(hotRanks.prefix(10))) { item in
-                            if let d = item.drama {
-                                Button {
-                                    path.append(PlayerEntry(dramaId: d.id, episodeId: nil))
-                                } label: {
-                                    HStack(spacing: 10) {
-                                        Text("\(item.rank)")
-                                            .font(.headline)
-                                            .foregroundStyle(AppTheme.primary)
-                                            .frame(width: 28)
-                                        dramaRow(d)
-                                    }
+            }
+            if results.isEmpty, !hotRanks.isEmpty {
+                Section("热播榜") {
+                    ForEach(Array(hotRanks.prefix(10))) { item in
+                        if let d = item.drama {
+                            NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
+                                HStack(spacing: 10) {
+                                    Text("\(item.rank)")
+                                        .font(.headline)
+                                        .foregroundStyle(AppTheme.primary)
+                                        .frame(width: 28)
+                                    dramaRow(d)
                                 }
                             }
                         }
                     }
                 }
-                if !results.isEmpty {
-                    Section("结果") {
-                        ForEach(results) { d in
-                            Button {
-                                path.append(PlayerEntry(dramaId: d.id, episodeId: nil))
-                            } label: {
-                                dramaRow(d)
-                            }
+            }
+            if !results.isEmpty {
+                Section("结果") {
+                    ForEach(results) { d in
+                        NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
+                            dramaRow(d)
                         }
                     }
                 }
             }
-            .searchable(text: $keyword, prompt: "搜索短剧…")
-            .onSubmit(of: .search) { Task { await runSearch() } }
-            .scrollContentBackground(.hidden)
-            .background(AppTheme.background)
-            .task {
-                await loadHistory()
-                await loadHotRanks()
-            }
-            .overlay {
-                if loading { ProgressView() }
-            }
-            .navigationTitle("搜索")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: PlayerEntry.self) { e in
-                PlayerView(dramaId: e.dramaId, episodeId: e.episodeId)
-            }
         }
+        .searchable(text: $keyword, prompt: "搜索短剧…")
+        .onSubmit(of: .search) { Task { await runSearch() } }
+        .scrollContentBackground(.hidden)
+        .background(AppTheme.background)
+        .task {
+            await loadHistory()
+            await loadHotRanks()
+        }
+        .overlay {
+            if loading { ProgressView() }
+        }
+        .navigationTitle("搜索")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func dramaRow(_ d: Drama) -> some View {
         HStack {
-            if let u = ImageURL.resolve(d.coverUrl) {
-                AsyncImage(url: u) { p in
-                    p.resizable().scaledToFill()
-                } placeholder: { Color(white: 0.2) }
-                .frame(width: 48, height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
+            HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 48, height: 64, radius: 4)
             VStack(alignment: .leading, spacing: 4) {
                 Text(d.title ?? "")
                     .foregroundStyle(AppTheme.onSurface)

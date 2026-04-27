@@ -76,6 +76,56 @@ struct HGInteractionButton: View {
     }
 }
 
+struct HGDramaCover: View {
+    let url: URL?
+    var width: CGFloat
+    var height: CGFloat
+    var radius: CGFloat = 8
+
+    var body: some View {
+        ZStack {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty:
+                        placeholder
+                    case .failure:
+                        placeholder
+                    @unknown default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [AppTheme.surfaceHigh, AppTheme.surfaceHighest],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(spacing: 6) {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.title3)
+                    .foregroundStyle(AppTheme.primary.opacity(0.82))
+                Text("暂无封面")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 extension View {
     func hgCard(radius: CGFloat = AppTheme.cardRadius, fill: Color = AppTheme.surface) -> some View {
         modifier(HGCardModifier(radius: radius, fill: fill))

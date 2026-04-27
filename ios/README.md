@@ -22,7 +22,7 @@ open HongguoTheater.xcodeproj
 与 Android `build.gradle` 中 `BASE_URL` 一致，默认写在 `HongguoTheater/Info.plist` 的 `API_BASE_URL`（含结尾 `/`），可按环境修改，例如：
 
 - 开发：`http://192.168.20.2:8080/api/v1/`
-- 生产：`https://你的域名/api/v1/`
+- 生产：`http://api2.h6ign.com/api/v1/`
 
 已开启 `NSAllowsArbitraryLoads` 以便 HTTP 调试；上架前请改为 HTTPS + ATS 白名单。
 

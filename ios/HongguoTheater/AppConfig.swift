@@ -5,7 +5,7 @@ enum AppConfig {
     static var apiBase: String {
         (Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        ?? "http://192.168.20.2:8080/api/v1/"
+        ?? "http://api2.h6ign.com/api/v1/"
     }
 
     /// 去掉 `/api/v1/`，用于拼接图片相对路径（对齐 Android `ImageUrlUtils`）

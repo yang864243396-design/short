@@ -261,13 +261,7 @@ struct ProfileView: View {
             if let d = h.drama {
                 Button { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) } label: {
                     HStack {
-                        if let u = ImageURL.resolve(d.coverUrl) {
-                            AsyncImage(url: u) { p in
-                                p.resizable().scaledToFill()
-                            } placeholder: { Color(white: 0.2) }
-                            .frame(width: 48, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
+                        HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 48, height: 64, radius: 4)
                         VStack(alignment: .leading) {
                             Text(d.title ?? "")
                                 .foregroundStyle(AppTheme.onSurface)
@@ -287,13 +281,7 @@ struct ProfileView: View {
         ForEach(collections) { d in
             Button { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) } label: {
                 HStack {
-                    if let u = ImageURL.resolve(d.coverUrl) {
-                        AsyncImage(url: u) { p in
-                            p.resizable().scaledToFill()
-                        } placeholder: { Color(white: 0.2) }
-                        .frame(width: 48, height: 64)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
+                    HGDramaCover(url: ImageURL.resolve(d.coverUrl), width: 48, height: 64, radius: 4)
                     Text(d.title ?? "")
                         .foregroundStyle(AppTheme.onSurface)
                 }
