@@ -3,6 +3,8 @@ import Foundation
 extension Notification.Name {
     /// 与 Android `TokenInterceptor` 在 401 时登出并提示登录 对齐
     static let hgAuthRequired = Notification.Name("hgAuthRequired")
+    /// 免广告权益购买后通知当前播放页同步状态。
+    static let hgAdSkipPurchased = Notification.Name("hgAdSkipPurchased")
 }
 
 enum APIError: LocalizedError {

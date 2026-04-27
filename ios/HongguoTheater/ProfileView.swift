@@ -347,6 +347,7 @@ struct ProfileView: View {
             try await APIClient.shared.purchaseAdSkip(configId: c.id, token: session.token)
             showAdSkipPicker = false
             await refreshHeader()
+            NotificationCenter.default.post(name: .hgAdSkipPurchased, object: nil)
         } catch {
             adSkipError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }

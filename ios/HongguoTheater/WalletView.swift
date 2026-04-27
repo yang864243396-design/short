@@ -13,33 +13,22 @@ struct WalletView: View {
     @State private var showPayChannel = false
     @State private var payChannelPkg: RechargePackageItem?
     @State private var payChannelEnv: RechargePackagesEnvelope?
+    @State private var confirmPackage: RechargePackageItem?
+    @State private var confirmEnvelope: RechargePackagesEnvelope?
+    @State private var recharging = false
+    @State private var payChecking = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 walletHeader
                 rechargeGrid
-                Button {
-                    path.append(WalletTxDest())
-                } label: {
-                    HStack {
-                        Image(systemName: "list.bullet.rectangle")
-                            .foregroundStyle(AppTheme.primary)
-                        Text("余额流水")
-                            .foregroundStyle(AppTheme.onSurface)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(AppTheme.onSurfaceVariant)
-                    }
-                    .padding()
-                    .hgCard(fill: AppTheme.surfaceHigh)
-                }
-                .buttonStyle(.plain)
+                supportCard
             }
             .padding()
         }
         .background(AppTheme.background)
-        .navigationTitle("我的钱包")
+        .navigationTitle("钱包")
         .task { await reload() }
         .refreshable { await reload() }
         .onChange(of: scenePhase) { phase in
@@ -47,10 +36,44 @@ struct WalletView: View {
                 Task { await queryPendingRechargeIfNeeded() }
             }
         }
+        .overlay {
+            if recharging || payChecking {
+                ZStack {
+                    Color.black.opacity(0.35).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView().tint(AppTheme.primary)
+                        Text(recharging ? "订单提交中，请稍候" : "正在检测支付结果，请稍候")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.onSurface)
+                    }
+                    .padding(20)
+                    .hgCard(fill: AppTheme.surfaceHigh)
+                }
+            }
+        }
+        .confirmationDialog("充值套餐", isPresented: Binding(
+            get: { confirmPackage != nil && confirmEnvelope != nil },
+            set: { if !$0 { confirmPackage = nil; confirmEnvelope = nil } }
+        ), titleVisibility: .visible) {
+            Button("确定") {
+                guard let pkg = confirmPackage, let e = confirmEnvelope else { return }
+                confirmPackage = nil
+                confirmEnvelope = nil
+                Task { await buyConfirmed(pkg, e) }
+            }
+            Button("取消", role: .cancel) {
+                confirmPackage = nil
+                confirmEnvelope = nil
+            }
+        } message: {
+            if let pkg = confirmPackage {
+                Text(rechargeConfirmMessage(pkg))
+            }
+        }
         .confirmationDialog("选择支付方式", isPresented: $showPayChannel, titleVisibility: .visible) {
             if let e = payChannelEnv {
                 ForEach(e.payOptions.filter(\.enabled), id: \.id) { opt in
-                    Button(opt.name) {
+                    Button("\(opt.name) (\(opt.productId))") {
                         guard let pkg = payChannelPkg else { return }
                         Task { await executeRechargeOrder(package: pkg, envelope: e, productId: opt.productId) }
                     }
@@ -79,27 +102,35 @@ struct WalletView: View {
     @ViewBuilder
     private var walletHeader: some View {
         if let b = balance {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("当前余额")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.onSurfaceVariant)
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(b.coins)")
-                        .font(.system(size: 42, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.walletAccent)
-                    Text(b.currencyName ?? "金币")
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.onSurface)
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Color(red: 0.239, green: 0.18, blue: 0.165))
+                    Image(systemName: "creditcard.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color(red: 1, green: 0.557, blue: 0.451))
                 }
-                if b.coinsPerYuan ?? 0 > 0 {
-                    Text("规则：1 元 ≈ \(b.coinsPerYuan ?? 100) 金币")
+                .frame(width: 44, height: 44)
+                Text("我的钱包")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.onSurface)
+                Spacer()
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text("\(b.coins) \(b.currencyName ?? "金币")")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Color(red: 1, green: 0.557, blue: 0.451))
+                    Button("余额流水 ›") { path.append(WalletTxDest()) }
                         .font(.caption)
-                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                        .foregroundStyle(AppTheme.onSurface)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(AppTheme.surfaceHighest)
+                        .clipShape(Capsule())
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .hgCard(radius: 18, fill: AppTheme.surfaceHigh)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .background(Color(red: 0.118, green: 0.118, blue: 0.133))
+            .clipShape(Capsule())
         }
     }
 
@@ -107,13 +138,22 @@ struct WalletView: View {
     private var rechargeGrid: some View {
         if let e = env {
             VStack(alignment: .leading, spacing: 12) {
-                Text("充值套餐")
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.onSurface)
+                HStack {
+                    Text("充值套餐")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.onSurface)
+                    Spacer()
+                    if let b = balance, b.coinsPerYuan ?? 0 > 0 {
+                        Text("1 金币 ≈ ¥\(String(format: "%.2f", 1.0 / Double(b.coinsPerYuan ?? 100)))")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                    }
+                }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                     ForEach(e.list, id: \.id) { pkg in
                         Button {
-                            Task { await buy(pkg, e) }
+                            confirmPackage = pkg
+                            confirmEnvelope = e
                         } label: {
                             VStack(spacing: 6) {
                                 Text(pkg.name)
@@ -141,10 +181,36 @@ struct WalletView: View {
                 if e.simulateAllowed {
                     Text("当前为模拟支付环境，可在下单后使用模拟到账。")
                         .font(.caption2)
-                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                        .foregroundStyle(AppTheme.primary)
                 }
             }
         }
+    }
+
+    private var supportCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(AppTheme.surfaceHighest)
+                Image(systemName: "questionmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(AppTheme.primary)
+            }
+            .frame(width: 40, height: 40)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("充值遇到问题？")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.onSurface)
+                Text("若充值长时间未到账，请保留订单信息并联系客服协助处理。")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
+            }
+        }
+        .padding(14)
+        .hgCard(fill: Color(red: 0.078, green: 0.078, blue: 0.094))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+        )
     }
 
     private func reload() async {
@@ -155,7 +221,16 @@ struct WalletView: View {
         } catch { message = error.localizedDescription }
     }
 
-    private func buy(_ pkg: RechargePackageItem, _ e: RechargePackagesEnvelope) async {
+    private func rechargeConfirmMessage(_ pkg: RechargePackageItem) -> String {
+        var msg = "\(pkg.name)\n基础 \(pkg.coins) 金币"
+        if pkg.bonusCoins > 0 {
+            msg += " + 赠送 \(pkg.bonusCoins)"
+        }
+        msg += "（共 \(pkg.coins + pkg.bonusCoins)）\n¥\(String(format: "%.2f", pkg.priceYuan))"
+        return msg
+    }
+
+    private func buyConfirmed(_ pkg: RechargePackageItem, _ e: RechargePackagesEnvelope) async {
         var productId: String?
         if e.lubzfEnabled {
             let opts = e.payOptions.filter(\.enabled)
@@ -179,8 +254,14 @@ struct WalletView: View {
         envelope e: RechargePackagesEnvelope,
         productId: String?
     ) async {
+        guard !recharging else {
+            message = "订单提交中，请稍候"
+            return
+        }
         payChannelPkg = nil
         payChannelEnv = nil
+        recharging = true
+        defer { recharging = false }
         do {
             let r = try await APIClient.shared.createRechargeOrder(
                 packageId: pkg.id,
@@ -190,21 +271,31 @@ struct WalletView: View {
             if let url = r.payUrl, !url.isEmpty, let u = URL(string: url) {
                 payQueryMch = r.mchOrderNo ?? r.order?.mchOrderNo
                 payQueryPayId = r.order?.payOrderId
-                await UIApplication.shared.open(u)
-                message = "已跳转支付，返回本应用后将自动查单；也可稍后在流水中确认。"
+                let opened = await UIApplication.shared.open(u)
+                if opened {
+                    message = "已跳转支付，返回本应用后将自动查单；也可稍后在流水中确认。"
+                } else {
+                    payQueryMch = nil
+                    payQueryPayId = nil
+                    message = "无法打开支付链接"
+                }
             } else if let oid = r.order?.id, e.simulateAllowed {
                 try await APIClient.shared.simulateRechargePay(orderId: oid, token: session.token)
-                message = "模拟支付成功"
+                message = "订单已完成，金币已发放到您的账户。"
                 await reload()
             } else {
-                message = "充值成功"
+                message = "订单已完成，金币已发放到您的账户。"
                 await reload()
             }
-        } catch { message = error.localizedDescription }
+        } catch {
+            message = "无法发起支付，请稍后重试"
+        }
     }
 
     private func queryPendingRechargeIfNeeded() async {
         guard session.isLoggedIn, payQueryMch != nil || payQueryPayId != nil else { return }
+        payChecking = true
+        defer { payChecking = false }
         do {
             let r = try await APIClient.shared.queryRechargeOrder(
                 mchOrderNo: payQueryMch,
@@ -214,16 +305,14 @@ struct WalletView: View {
             if r.order?.status == "paid" {
                 payQueryMch = nil
                 payQueryPayId = nil
-                if let c = r.coins {
-                    message = "支付成功，当前约 \(c) 金币"
-                } else {
-                    message = "支付成功"
-                }
+                message = "订单已完成，金币已发放到您的账户。"
                 await reload()
+            } else {
+                message = "暂未获取到支付结果，请下拉页面刷新后查看。若已付款，也可稍等片刻后再次刷新。"
             }
         } catch {
             if payQueryMch != nil || payQueryPayId != nil {
-                message = "查单未成功，请下拉刷新重试，或稍后在流水中确认。"
+                message = "服务繁忙，暂时无法完成校验，请稍后再试。已付款的订单可稍后在「钱包-流水」中确认。"
             }
         }
     }

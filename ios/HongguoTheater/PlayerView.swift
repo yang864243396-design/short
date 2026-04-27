@@ -11,6 +11,7 @@ struct PlayerView: View {
     @State private var episodeGroupIndex = 0
     @State private var descriptionExpanded = false
     @State private var showWallet = false
+    @State private var showLogin = false
 
     init(dramaId: Int64, episodeId: Int64?) {
         _vm = StateObject(wrappedValue: PlayerViewModel(dramaId: dramaId, startEpisodeId: episodeId))
@@ -147,21 +148,31 @@ struct PlayerView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                         VStack(spacing: 14) {
-                            if session.isLoggedIn {
-                                sideIcon("heart.fill", label: "点赞", on: vm.liked) {
-                                    Task {
-                                        let liked = await vm.toggleLike()
-                                        if liked {
-                                            addLikeBurst(at: CGPoint(x: proxy.size.width - 48, y: proxy.size.height * 0.58))
-                                        }
+                            sideIcon("heart.fill", label: "点赞", on: vm.liked) {
+                                guard session.isLoggedIn else {
+                                    showLogin = true
+                                    return
+                                }
+                                Task {
+                                    let liked = await vm.toggleLike()
+                                    if liked {
+                                        addLikeBurst(at: CGPoint(x: proxy.size.width - 48, y: proxy.size.height * 0.58))
                                     }
                                 }
-                                sideIcon("star.fill", label: "收藏", on: vm.collected) {
-                                    Task { await vm.toggleCollect() }
+                            }
+                            sideIcon("star.fill", label: "收藏", on: vm.collected) {
+                                guard session.isLoggedIn else {
+                                    showLogin = true
+                                    return
                                 }
+                                Task { await vm.toggleCollect() }
                             }
                             if vm.current != nil {
                                 sideIcon("text.bubble.fill", label: "评论", on: false) {
+                                    if !session.isLoggedIn {
+                                        showLogin = true
+                                        return
+                                    }
                                     showComments = true
                                 }
                             }
@@ -222,6 +233,11 @@ struct PlayerView: View {
                 Task { await vm.load() }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .hgAdSkipPurchased)) { _ in
+            if vm.showAd {
+                Task { await vm.finishAdAndPlayMain() }
+            }
+        }
         .alert("提示", isPresented: Binding(
             get: { vm.loadError != nil },
             set: { if !$0 { vm.loadError = nil } }
@@ -247,6 +263,10 @@ struct PlayerView: View {
                 WalletView()
                     .environmentObject(session)
             }
+        }
+        .sheet(isPresented: $showLogin) {
+            LoginView()
+                .environmentObject(session)
         }
         .sheet(isPresented: $showComments) {
             Group {
