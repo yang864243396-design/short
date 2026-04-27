@@ -28,6 +28,7 @@
 		B00000000000000000000013 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000013 /* SessionStore.swift */; };
 		B00000000000000000000014 /* VerticalPagingScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000014 /* VerticalPagingScrollView.swift */; };
 		B00000000000000000000015 /* WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000015 /* WalletView.swift */; };
+		B00000000000000000000017 /* HGDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000019 /* HGDialog.swift */; };
 		B00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000016 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -53,6 +54,7 @@
 		F00000000000000000000013 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		F00000000000000000000014 /* VerticalPagingScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerticalPagingScrollView.swift; sourceTree = "<group>"; };
 		F00000000000000000000015 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
+		F00000000000000000000019 /* HGDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HGDialog.swift; sourceTree = "<group>"; };
 		F00000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F00000000000000000000018 /* HongguoTheater.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HongguoTheater.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -85,6 +87,7 @@
 				F00000000000000000000003 /* AppTheme.swift */,
 				F00000000000000000000004 /* CommentSheetView.swift */,
 				F00000000000000000000005 /* FeedView.swift */,
+				F00000000000000000000019 /* HGDialog.swift */,
 				F00000000000000000000006 /* HomeView.swift */,
 				F00000000000000000000007 /* HongguoTheaterApp.swift */,
 				F00000000000000000000008 /* ImageURL.swift */,
@@ -191,6 +194,7 @@
 				B00000000000000000000003 /* AppTheme.swift in Sources */,
 				B00000000000000000000004 /* CommentSheetView.swift in Sources */,
 				B00000000000000000000005 /* FeedView.swift in Sources */,
+				B00000000000000000000017 /* HGDialog.swift in Sources */,
 				B00000000000000000000006 /* HomeView.swift in Sources */,
 				B00000000000000000000007 /* HongguoTheaterApp.swift in Sources */,
 				B00000000000000000000008 /* ImageURL.swift in Sources */,
