@@ -61,7 +61,7 @@ struct WalletView: View {
         .navigationTitle("我的钱包")
         .task { await reload() }
         .refreshable { await reload() }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task { await queryPendingRechargeIfNeeded() }
             }
@@ -199,7 +199,7 @@ struct WalletTransactionsView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
-            .onChange(of: filterIndex) { _, _ in Task { await reset() } }
+            .onChange(of: filterIndex) { _ in Task { await reset() } }
 
             List {
                 ForEach(items) { tx in

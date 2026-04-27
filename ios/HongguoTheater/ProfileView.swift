@@ -33,7 +33,7 @@ struct ProfileView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-                .onChange(of: tab) { _, _ in Task { await loadTab() } }
+                .onChange(of: tab) { _ in Task { await loadTab() } }
                 .onAppear { Task { await loadTab() } }
 
                 if session.isLoggedIn {
@@ -54,7 +54,7 @@ struct ProfileView: View {
             .background(AppTheme.background)
             .navigationTitle("我的")
             .task { await refreshHeader() }
-            .onChange(of: session.isLoggedIn) { _, on in
+            .onChange(of: session.isLoggedIn) { on in
                 if on { Task { await refreshHeader() } }
             }
             .sheet(isPresented: $showLogin) { LoginView().environmentObject(session) }
@@ -128,7 +128,7 @@ struct ProfileView: View {
             PhotosPicker(selection: $pickerItem, matching: .images) {
                 avatarImage
             }
-            .onChange(of: pickerItem) { _, n in
+            .onChange(of: pickerItem) { n in
                 Task { await uploadAvatar(n) }
             }
         } else { avatarImage }

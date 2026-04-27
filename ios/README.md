@@ -4,8 +4,8 @@
 
 ## 环境
 
-- macOS + **Xcode 15+**（推荐）
-- **iOS 17+**（用于 `TabView` 分页与部分 SwiftUI API）
+- macOS + **Xcode 16.4**（Xcode 15+ 也可打开）
+- **iOS 16.7+**
 - 使用 [XcodeGen](https://github.com/yonaskolb/XcodeGen) 从 `project.yml` 生成工程（避免提交庞大的 `pbxproj`）
 
 ## 生成 Xcode 工程

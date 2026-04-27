@@ -3,7 +3,7 @@ name: HongguoTheater
 options:
   bundleIdPrefix: com.hongguo
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "16.7"
   xcodeVersion: "15.0"
 settings:
   base:
@@ -15,7 +15,7 @@ targets:
   HongguoTheater:
     type: application
     platform: iOS
-    deploymentTarget: "17.0"
+    deploymentTarget: "16.7"
     sources:
       - path: HongguoTheater
         excludes:

@@ -160,7 +160,7 @@ struct PlayerView: View {
             vm.authToken = session.isLoggedIn ? session.token : nil
             await vm.load()
         }
-        .onChange(of: session.isLoggedIn) { _, on in
+        .onChange(of: session.isLoggedIn) { on in
             vm.authToken = on ? session.token : nil
             if on {
                 Task { await vm.load() }

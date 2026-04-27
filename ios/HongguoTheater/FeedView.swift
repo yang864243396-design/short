@@ -82,14 +82,14 @@ struct FeedView: View {
                 }
             }
         }
-        .onChange(of: currentIndex) { _, newVal in
+        .onChange(of: currentIndex) { newVal in
             if newVal >= episodes.count - 3, !loading, episodes.count > 0 {
                 Task { await loadMore() }
             }
             tryScrollAfterDrama()
             rebuildPlayerForCurrent()
         }
-        .onChange(of: parentTab) { _, new in
+        .onChange(of: parentTab) { new in
             if new == .feed {
                 if !initialLoaded {
                     initialLoaded = true
@@ -101,7 +101,7 @@ struct FeedView: View {
                 player?.pause()
             }
         }
-        .onChange(of: scenePhase) { _, ph in
+        .onChange(of: scenePhase) { ph in
             if ph == .active, parentTab == .feed {
                 player?.play()
             } else if ph != .active {

@@ -23,7 +23,7 @@ struct RankingView: View {
             }
             .pickerStyle(.segmented)
             .padding()
-            .onChange(of: type) { _, n in
+            .onChange(of: type) { n in
                 Task { await load(n) }
             }
             if loading, items.isEmpty {

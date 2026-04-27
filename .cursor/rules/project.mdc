@@ -6,12 +6,13 @@ alwaysApply: true
 
 # 短剧平台（short-drama）项目架构
 
-三端：Go 后端 API + Vue3 管理后台 + Android 客户端
+四端：Go 后端 API + Vue3 管理后台 + Android 客户端 + iOS 客户端
 
 ## 技术栈
 - **backend/**: Go + Gin + GORM + MySQL + Redis，端口 8080
 - **admin/**: Vue3 + Vite + Element Plus + TypeScript，端口 3000，代理 → 8080
 - **android_stitch/**: Android（Java），包名 `com.hongguo.theater`
+- **ios/**: iOS 原生 SwiftUI，Xcode 16.4 / iOS 16.7+，App 名 `HongguoTheater`
 
 ## 数据库表 → 模型（backend/models/）
 
@@ -120,6 +121,33 @@ admins 与 app_users 完全独立；user_likes 等表的 user_id 引用 app_user
 Java 包路径：`com.hongguo.theater`
 布局 XML：`app/src/main/res/layout/`
 
+## iOS 定位（ios/）
+
+| 功能 | 关键文件 |
+|------|----------|
+| 工程配置 | project.yml, HongguoTheater.xcodeproj |
+| 应用入口 | HongguoTheater/HongguoTheaterApp.swift |
+| 主 Tab | HongguoTheater/MainTabView.swift |
+| 网络层 | HongguoTheater/APIClient.swift, HongguoTheater/AppConfig.swift |
+| 数据模型 | HongguoTheater/Models.swift |
+| 会话与登录态 | HongguoTheater/SessionStore.swift |
+| 首页 | HongguoTheater/HomeView.swift |
+| 播放页 | HongguoTheater/PlayerView.swift, HongguoTheater/PlayerViewModel.swift |
+| Feed 分页 | HongguoTheater/FeedView.swift, HongguoTheater/VerticalPagingScrollView.swift |
+| 评论弹窗 | HongguoTheater/CommentSheetView.swift |
+| 搜索 | HongguoTheater/SearchView.swift |
+| 排行榜 | HongguoTheater/RankingView.swift |
+| 个人中心 | HongguoTheater/ProfileView.swift |
+| 钱包 | HongguoTheater/WalletView.swift |
+| 登录 | HongguoTheater/LoginView.swift |
+| 播放地址处理 | HongguoTheater/PlaybackURL.swift |
+| 图片地址处理 | HongguoTheater/ImageURL.swift |
+| 主题样式 | HongguoTheater/AppTheme.swift |
+| 点赞动效 | HongguoTheater/LikeBurstView.swift |
+
+接口地址：`HongguoTheater/Info.plist` 的 `API_BASE_URL`（默认对齐 Android 的后端 `/api/v1/`）
+资源目录：`HongguoTheater/Assets.xcassets/`
+
 ## 前端规划 · Skill 路由（省 token）
 
 仅 **admin/**、**Android** 界面或用户明确 **UI/设计/图标/动效/品牌** 时读 `.cursor/skills/SKILLS_INDEX.md`；**纯 backend/** 与界面无关任务 **不要** 读该索引。
@@ -140,3 +168,4 @@ Java 包路径：`com.hongguo.theater`
 4. **找前端页面** → `admin/src/views/XxxView.vue`
 5. **找接口封装** → `admin/src/api/index.ts`
 6. **找 Android** → `android_stitch/.../ui/xxx/` + `api/ApiService.java`
+7. **找 iOS** → `ios/HongguoTheater/XxxView.swift` + `APIClient.swift`
