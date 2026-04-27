@@ -84,26 +84,35 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(user?.displayName ?? "用户")
                             .font(.title3.weight(.semibold))
+                            .foregroundStyle(AppTheme.onSurface)
                         Text("\(user?.coins ?? 0) 金币")
-                            .font(.subheadline)
-                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.primary)
                     }
                     Spacer()
                     Button("退出") { session.logout() }
                         .font(.subheadline)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
                 }
+                .padding()
+                .hgCard(radius: 18, fill: AppTheme.surfaceHigh)
                 .padding(.horizontal)
                 Button {
                     path.append(WalletDest())
                 } label: {
                     HStack {
+                        Image(systemName: "creditcard.fill")
+                            .foregroundStyle(AppTheme.primary)
                         Text("我的钱包")
+                            .foregroundStyle(AppTheme.onSurface)
                         Spacer()
-                        Text("›")
+                        Text("\(user?.coins ?? 0) 金币")
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
                     }
                     .padding()
-                    .background(AppTheme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .hgCard(fill: AppTheme.surface)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal)
@@ -117,6 +126,8 @@ struct ProfileView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
+                    .hgCard(radius: 18, fill: AppTheme.surfaceHigh)
+                    .padding(.horizontal)
                 }
             }
         }
@@ -177,26 +188,40 @@ struct ProfileView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
+        .padding()
+        .hgCard(fill: AppTheme.surface)
         .padding(.horizontal)
     }
 
     private var adSkipSheet: some View {
         NavigationStack {
-            List {
-                ForEach(resolvePurchaseConfigs(), id: \.id) { c in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(c.name)
-                            Text("\(c.priceCoins) 金币")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+                    ForEach(resolvePurchaseConfigs(), id: \.id) { c in
+                        Button {
+                            Task { await buyAdSkip(c) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(c.name)
+                                    .font(.headline)
+                                    .foregroundStyle(AppTheme.onSurface)
+                                Text("\(c.priceCoins) 金币")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(AppTheme.primary)
+                                Text(c.typeLower == "count" ? "\(c.skipCount) 次免广告" : "\(c.durationHours) 小时权益")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.onSurfaceVariant)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 98, alignment: .leading)
+                            .padding()
+                            .hgCard(fill: AppTheme.surfaceHigh)
                         }
-                        Spacer()
-                        Button("购买") { Task { await buyAdSkip(c) } }
-                            .tint(AppTheme.primary)
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding()
             }
+            .background(AppTheme.background)
             .navigationTitle("选择套餐")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -245,11 +270,14 @@ struct ProfileView: View {
                         }
                         VStack(alignment: .leading) {
                             Text(d.title ?? "")
+                                .foregroundStyle(AppTheme.onSurface)
                             Text(h.isFinished ? "已看完" : "看到第 \(h.lastEpisode) 集")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.onSurfaceVariant)
                         }
                     }
+                    .padding(10)
+                    .hgCard(fill: AppTheme.surface)
                 }
             }
         }
@@ -264,9 +292,13 @@ struct ProfileView: View {
                             p.resizable().scaledToFill()
                         } placeholder: { Color(white: 0.2) }
                         .frame(width: 48, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                     Text(d.title ?? "")
+                        .foregroundStyle(AppTheme.onSurface)
                 }
+                .padding(10)
+                .hgCard(fill: AppTheme.surface)
             }
         }
     }
@@ -279,9 +311,11 @@ struct ProfileView: View {
                         Text(e.drama?.title ?? "短剧")
                         Text("第 \(e.episodeNumber) 集")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
                     }
                 }
+                .padding(10)
+                .hgCard(fill: AppTheme.surface)
             }
         }
     }

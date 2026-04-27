@@ -67,6 +67,13 @@ final class PlayerViewModel: ObservableObject {
         startPlaybackPipeline()
     }
 
+    func selectRelativeEpisode(offset: Int) {
+        guard let cur = current, let idx = episodes.firstIndex(where: { $0.id == cur.id }) else { return }
+        let next = idx + offset
+        guard episodes.indices.contains(next) else { return }
+        selectEpisode(episodes[next])
+    }
+
     func toggleLike() async -> Bool {
         guard let t = authToken, !t.isEmpty, let ep = current else { return false }
         do {

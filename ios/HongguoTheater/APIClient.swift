@@ -410,9 +410,32 @@ extension APIClient {
         return d
     }
 
-    func postComment(episodeId: Int64, content: String, parentId: Int64?, token: String) async throws {
+    func getCommentReplies(
+        episodeId: Int64,
+        rootId: Int64,
+        page: Int,
+        pageSize: Int,
+        token: String?
+    ) async throws -> CommentListPayload {
+        let r: APIResponse<CommentListPayload> = try await fetchResponse(
+            path: "episodes/\(episodeId)/replies/\(rootId)",
+            query: ["page": "\(page)", "page_size": "\(pageSize)"],
+            token: token
+        )
+        guard r.isSuccess, let d = r.data else { throw APIError.business(r.message ?? "加载失败") }
+        return d
+    }
+
+    func postComment(
+        episodeId: Int64,
+        content: String,
+        parentId: Int64?,
+        replyToCommentId: Int64? = nil,
+        token: String
+    ) async throws {
         var b: [String: Any] = ["content": content]
         if let p = parentId, p > 0 { b["parent_id"] = Int(p) }
+        if let r = replyToCommentId, r > 0 { b["reply_to_comment_id"] = Int(r) }
         let r: APIResponse<CommentItem> = try await fetchResponse(
             path: "episodes/\(episodeId)/comments",
             method: "POST",

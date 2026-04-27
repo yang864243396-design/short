@@ -8,6 +8,8 @@ struct PlayerView: View {
     @State private var showEpisodes = false
     @State private var showComments = false
     @State private var likeBursts: [LikeBurst] = []
+    @State private var episodeGroupIndex = 0
+    @State private var descriptionExpanded = false
 
     init(dramaId: Int64, episodeId: Int64?) {
         _vm = StateObject(wrappedValue: PlayerViewModel(dramaId: dramaId, startEpisodeId: episodeId))
@@ -111,12 +113,13 @@ struct PlayerView: View {
                             Text(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")
                                 .font(.subheadline)
                                 .foregroundStyle(Color.white.opacity(0.9))
+                            descriptionBlock
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                         VStack(spacing: 14) {
                             if session.isLoggedIn {
-                                sideIcon("heart.fill", on: vm.liked) {
+                                sideIcon("heart.fill", label: "点赞", on: vm.liked) {
                                     Task {
                                         let liked = await vm.toggleLike()
                                         if liked {
@@ -124,16 +127,28 @@ struct PlayerView: View {
                                         }
                                     }
                                 }
-                                sideIcon("star.fill", on: vm.collected) {
+                                sideIcon("star.fill", label: "收藏", on: vm.collected) {
                                     Task { await vm.toggleCollect() }
                                 }
                             }
                             if vm.current != nil {
-                                sideIcon("text.bubble.fill", on: false) {
+                                sideIcon("text.bubble.fill", label: "评论", on: false) {
                                     showComments = true
                                 }
                             }
-                            sideIcon("list.bullet", on: false) {
+                            ShareLink(item: shareText) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.title2)
+                                        .foregroundStyle(.white)
+                                        .padding(10)
+                                        .background(Circle().fill(Color.black.opacity(0.35)))
+                                    Text("分享")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                            sideIcon("list.bullet", label: "选集", on: false) {
                                 showEpisodes = true
                             }
                         }
@@ -153,6 +168,17 @@ struct PlayerView: View {
                 SpatialTapGesture(count: 2).onEnded { value in
                     Task { await likeFromDoubleTap(at: value.location) }
                 }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 60)
+                    .onEnded { value in
+                        guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                        if value.translation.height < -80 {
+                            vm.selectRelativeEpisode(offset: 1)
+                        } else if value.translation.height > 80 {
+                            vm.selectRelativeEpisode(offset: -1)
+                        }
+                    }
             )
         }
         .navigationBarHidden(true)
@@ -187,22 +213,37 @@ struct PlayerView: View {
         }
         .sheet(isPresented: $showEpisodes) {
             NavigationStack {
-                List(vm.episodes) { ep in
-                    Button {
-                        vm.selectEpisode(ep)
-                        showEpisodes = false
-                    } label: {
-                        HStack {
-                            Text("第 \(ep.episodeNumber) 集")
-                            Spacer()
-                            if !(ep.isFree ?? true), !(ep.coinUnlocked ?? false) {
-                                Text("锁")
-                                    .foregroundStyle(AppTheme.onSurfaceVariant)
+                VStack(spacing: 12) {
+                    episodeGroupTabs
+                    ScrollView {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+                            ForEach(currentEpisodeGroup) { ep in
+                                Button {
+                                    vm.selectEpisode(ep)
+                                    showEpisodes = false
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Text("\(ep.episodeNumber)")
+                                            .font(.subheadline.weight(.semibold))
+                                        if !(ep.isFree ?? true), !(ep.coinUnlocked ?? false) {
+                                            Image(systemName: "lock.fill")
+                                                .font(.caption2)
+                                                .foregroundStyle(AppTheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 46)
+                                    .foregroundStyle(ep.id == vm.current?.id ? AppTheme.primary : AppTheme.onSurface)
+                                    .background(ep.id == vm.current?.id ? AppTheme.primary.opacity(0.16) : AppTheme.surfaceHigh)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
+                        .padding(.horizontal)
                     }
                 }
                 .navigationTitle("选集")
+                .background(AppTheme.background)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("关闭") { showEpisodes = false }
@@ -212,14 +253,74 @@ struct PlayerView: View {
         }
     }
 
-    private func sideIcon(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: name)
-                .font(.title2)
-                .foregroundStyle(on ? AppTheme.primary : .white)
-                .padding(10)
-                .background(Circle().fill(Color.black.opacity(0.35)))
+    @ViewBuilder
+    private var descriptionBlock: some View {
+        let text = vm.drama?.description ?? vm.current?.drama?.description ?? ""
+        if !text.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.86))
+                    .lineLimit(descriptionExpanded ? 4 : 1)
+                Button(descriptionExpanded ? "收起" : "展开") {
+                    descriptionExpanded.toggle()
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.primaryLight)
+            }
         }
+    }
+
+    private var shareText: String {
+        "\(vm.drama?.title ?? vm.current?.drama?.title ?? "红果剧场") \(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")"
+    }
+
+    private var episodeGroups: [[Episode]] {
+        stride(from: 0, to: vm.episodes.count, by: 40).map {
+            Array(vm.episodes[$0 ..< min($0 + 40, vm.episodes.count)])
+        }
+    }
+
+    private var currentEpisodeGroup: [Episode] {
+        guard !episodeGroups.isEmpty else { return [] }
+        let idx = min(max(0, episodeGroupIndex), episodeGroups.count - 1)
+        return episodeGroups[idx]
+    }
+
+    private var episodeGroupTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(episodeGroups.enumerated()), id: \.offset) { idx, group in
+                    Button {
+                        episodeGroupIndex = idx
+                    } label: {
+                        let first = group.first?.episodeNumber ?? idx * 40 + 1
+                        let last = group.last?.episodeNumber ?? first
+                        Text("\(first)-\(last)")
+                            .hgPill(selected: idx == episodeGroupIndex)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.top, 8)
+    }
+
+    private func sideIcon(_ name: String, label: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: name)
+                    .font(.title2)
+                    .foregroundStyle(on ? AppTheme.primary : .white)
+                    .padding(10)
+                    .background(Circle().fill(Color.black.opacity(0.35)))
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private func likeFromDoubleTap(at point: CGPoint) async {

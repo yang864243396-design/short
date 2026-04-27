@@ -5,6 +5,7 @@ struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var keyword = ""
     @State private var history: [String] = []
+    @State private var hotRanks: [RankItem] = []
     @State private var results: [Drama] = []
     @State private var loading = false
     @State private var path = NavigationPath()
@@ -30,27 +31,32 @@ struct SearchView: View {
                         }
                     }
                 }
+                if results.isEmpty, !hotRanks.isEmpty {
+                    Section("热播榜") {
+                        ForEach(Array(hotRanks.prefix(10))) { item in
+                            if let d = item.drama {
+                                Button {
+                                    path.append(PlayerEntry(dramaId: d.id, episodeId: nil))
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Text("\(item.rank)")
+                                            .font(.headline)
+                                            .foregroundStyle(AppTheme.primary)
+                                            .frame(width: 28)
+                                        dramaRow(d)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if !results.isEmpty {
                     Section("结果") {
                         ForEach(results) { d in
                             Button {
                                 path.append(PlayerEntry(dramaId: d.id, episodeId: nil))
                             } label: {
-                                HStack {
-                                    if let u = ImageURL.resolve(d.coverUrl) {
-                                        AsyncImage(url: u) { p in
-                                            p.resizable().scaledToFill()
-                                        } placeholder: { Color(white: 0.2) }
-                                        .frame(width: 48, height: 64)
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    }
-                                    VStack(alignment: .leading) {
-                                        Text(d.title ?? "")
-                                        Text(d.statusText)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                                dramaRow(d)
                             }
                         }
                     }
@@ -58,7 +64,12 @@ struct SearchView: View {
             }
             .searchable(text: $keyword, prompt: "搜索短剧…")
             .onSubmit(of: .search) { Task { await runSearch() } }
-            .task { await loadHistory() }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.background)
+            .task {
+                await loadHistory()
+                await loadHotRanks()
+            }
             .overlay {
                 if loading { ProgressView() }
             }
@@ -66,6 +77,25 @@ struct SearchView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: PlayerEntry.self) { e in
                 PlayerView(dramaId: e.dramaId, episodeId: e.episodeId)
+            }
+        }
+    }
+
+    private func dramaRow(_ d: Drama) -> some View {
+        HStack {
+            if let u = ImageURL.resolve(d.coverUrl) {
+                AsyncImage(url: u) { p in
+                    p.resizable().scaledToFill()
+                } placeholder: { Color(white: 0.2) }
+                .frame(width: 48, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(d.title ?? "")
+                    .foregroundStyle(AppTheme.onSurface)
+                Text(d.statusText)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
             }
         }
     }
@@ -82,6 +112,15 @@ struct SearchView: View {
             try await APIClient.shared.clearSearchHistory(token: session.token)
             history = []
         } catch {}
+    }
+
+    private func loadHotRanks() async {
+        do {
+            hotRanks = try await APIClient.shared.getRankings(
+                type: "hot",
+                token: session.isLoggedIn ? session.token : nil
+            )
+        } catch { hotRanks = [] }
     }
 
     private func runSearch() async {

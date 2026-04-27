@@ -14,6 +14,7 @@ struct HomeView: View {
     @State private var loading = false
     @State private var refreshing = false
     @State private var error: String?
+    @State private var bannerIndex = 0
 
     @State private var path = NavigationPath()
 
@@ -29,6 +30,7 @@ struct HomeView: View {
                     sectionHeader("为你推荐")
                     recommendRow
                     categoryChips
+                    errorBanner
                     dramaGrid
                     if loading, dramList.isEmpty {
                         ProgressView()
@@ -75,8 +77,8 @@ struct HomeView: View {
     @ViewBuilder
     private var bannerSection: some View {
         if !banners.isEmpty {
-            TabView {
-                ForEach(banners) { b in
+            TabView(selection: $bannerIndex) {
+                ForEach(Array(banners.enumerated()), id: \.element.id) { idx, b in
                     Group {
                         if let u = ImageURL.resolve(b.imageUrl) {
                             AsyncImage(url: u) { p in
@@ -93,10 +95,21 @@ struct HomeView: View {
                             path.append(PlayerEntry(dramaId: b.dramaId!, episodeId: nil))
                         }
                     }
+                    .tag(idx)
                 }
             }
             .frame(height: 160)
-            .tabViewStyle(.page(indexDisplayMode: .automatic))
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .overlay(alignment: .bottom) {
+                HStack(spacing: 5) {
+                    ForEach(0 ..< banners.count, id: \.self) { idx in
+                        Capsule()
+                            .fill(idx == bannerIndex ? AppTheme.primary : Color.white.opacity(0.35))
+                            .frame(width: idx == bannerIndex ? 16 : 6, height: 6)
+                    }
+                }
+                .padding(.bottom, 10)
+            }
             .padding(.horizontal)
         }
     }
@@ -155,8 +168,7 @@ struct HomeView: View {
                             dramaMiniRow(d)
                         }
                         .padding(8)
-                        .background(AppTheme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .hgCard(radius: 10, fill: AppTheme.surface)
                         .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
                     }
                 }
@@ -207,14 +219,29 @@ struct HomeView: View {
         Button(action: action) {
             Text(title)
                 .font(.subheadline)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(sel ? AppTheme.primary.opacity(0.25) : AppTheme.surface)
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(sel ? AppTheme.primary : Color.clear, lineWidth: 1))
+                .hgPill(selected: sel)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(sel ? AppTheme.primary : AppTheme.onSurface)
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let error {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(AppTheme.primary)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
+                Spacer()
+                Button("重试") { Task { await refreshAll() } }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.primary)
+            }
+            .padding(12)
+            .hgCard(radius: 10, fill: AppTheme.surfaceHigh)
+            .padding(.horizontal)
+        }
     }
 
     @ViewBuilder
@@ -253,6 +280,7 @@ struct HomeView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.onSurface)
         }
+        .frame(width: 110, alignment: .leading)
     }
 
     private func dramaMiniRow(_ d: Drama) -> some View {
@@ -274,6 +302,8 @@ struct HomeView: View {
             }
             Spacer()
         }
+        .padding(8)
+        .hgCard(radius: 10, fill: AppTheme.surface)
     }
 
     private func refreshAll() async {

@@ -15,49 +15,30 @@ struct WalletView: View {
     @State private var payChannelEnv: RechargePackagesEnvelope?
 
     var body: some View {
-        List {
-            if let b = balance {
-                Section("我的钱包") {
-                    Text("当前余额：\(b.coins) \(b.currencyName ?? "金币")")
-                    if b.coinsPerYuan ?? 0 > 0 {
-                        Text("规则：1 元 ≈ \(b.coinsPerYuan ?? 100) 金币")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                walletHeader
+                rechargeGrid
+                Button {
+                    path.append(WalletTxDest())
+                } label: {
+                    HStack {
+                        Image(systemName: "list.bullet.rectangle")
+                            .foregroundStyle(AppTheme.primary)
+                        Text("余额流水")
+                            .foregroundStyle(AppTheme.onSurface)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(AppTheme.onSurfaceVariant)
                     }
+                    .padding()
+                    .hgCard(fill: AppTheme.surfaceHigh)
                 }
+                .buttonStyle(.plain)
             }
-            if let e = env {
-                Section("充值套餐") {
-                    ForEach(e.list, id: \.id) { pkg in
-                        Button {
-                            Task { await buy(pkg, e) }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(pkg.name)
-                                    Text("¥ \(String(format: "%.2f", pkg.priceYuan))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text("\(pkg.coins + pkg.bonusCoins) 币")
-                                    .foregroundStyle(AppTheme.primary)
-                            }
-                        }
-                    }
-                }
-                if e.simulateAllowed {
-                    Section {
-                        Text("当前为模拟支付环境，可在下单后使用模拟到账。")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            Section {
-                Button("余额流水") { path.append(WalletTxDest()) }
-            }
+            .padding()
         }
+        .background(AppTheme.background)
         .navigationTitle("我的钱包")
         .task { await reload() }
         .refreshable { await reload() }
@@ -92,6 +73,77 @@ struct WalletView: View {
             Button("确定", role: .cancel) { message = nil }
         } message: {
             Text(message ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var walletHeader: some View {
+        if let b = balance {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("当前余额")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.onSurfaceVariant)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(b.coins)")
+                        .font(.system(size: 42, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.walletAccent)
+                    Text(b.currencyName ?? "金币")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.onSurface)
+                }
+                if b.coinsPerYuan ?? 0 > 0 {
+                    Text("规则：1 元 ≈ \(b.coinsPerYuan ?? 100) 金币")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .hgCard(radius: 18, fill: AppTheme.surfaceHigh)
+        }
+    }
+
+    @ViewBuilder
+    private var rechargeGrid: some View {
+        if let e = env {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("充值套餐")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.onSurface)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    ForEach(e.list, id: \.id) { pkg in
+                        Button {
+                            Task { await buy(pkg, e) }
+                        } label: {
+                            VStack(spacing: 6) {
+                                Text(pkg.name)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(AppTheme.onSurface)
+                                    .lineLimit(1)
+                                Text("\(pkg.coins + pkg.bonusCoins) 币")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.primary)
+                                Text("¥ \(String(format: "%.2f", pkg.priceYuan))")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.onSurfaceVariant)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 92)
+                            .padding(8)
+                            .hgCard(radius: 12, fill: AppTheme.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppTheme.primary.opacity(0.28), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                if e.simulateAllowed {
+                    Text("当前为模拟支付环境，可在下单后使用模拟到账。")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.onSurfaceVariant)
+                }
+            }
         }
     }
 
@@ -192,13 +244,26 @@ struct WalletTransactionsView: View {
 
     var body: some View {
         VStack {
-            Picker("", selection: $filterIndex) {
+            HStack(spacing: 0) {
                 ForEach(0 ..< filterLabels.count, id: \.self) { i in
-                    Text(filterLabels[i]).tag(i)
+                    Button {
+                        filterIndex = i
+                    } label: {
+                        VStack(spacing: 6) {
+                            Text(filterLabels[i])
+                                .font(.subheadline.weight(filterIndex == i ? .bold : .regular))
+                                .foregroundStyle(filterIndex == i ? AppTheme.onSurface : AppTheme.onSurfaceVariant)
+                            Rectangle()
+                                .fill(filterIndex == i ? AppTheme.walletAccent : Color.clear)
+                                .frame(height: 3)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal)
+            .padding(.top, 8)
             .onChange(of: filterIndex) { _ in Task { await reset() } }
 
             List {
@@ -208,7 +273,7 @@ struct WalletTransactionsView: View {
                             Text(tx.title)
                             Text(tx.createdAt ?? "")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.onSurfaceVariant)
                         }
                         Spacer()
                         Text(tx.amount >= 0 ? "+\(tx.amount)" : "\(tx.amount)")
@@ -219,7 +284,9 @@ struct WalletTransactionsView: View {
                     Color.clear.onAppear { Task { await loadMore() } }
                 }
             }
+            .scrollContentBackground(.hidden)
         }
+        .background(AppTheme.background)
         .navigationTitle("余额流水")
         .task { await reset() }
     }

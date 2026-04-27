@@ -18,10 +18,13 @@ struct FeedView: View {
     @State private var loadError: String?
     @State private var loadMoreError: String?
     @State private var likedEpisodeIds: Set<Int64> = []
+    @State private var collectedEpisodeIds: Set<Int64> = []
     @State private var likeCounts: [Int64: Int64] = [:]
     @State private var likingEpisodeIds: Set<Int64> = []
     @State private var likeBursts: [LikeBurst] = []
     @State private var commentSheetEpisode: Episode?
+    @State private var playerEntry: FeedPlayerEntry?
+    @State private var expandedEpisodeIds: Set<Int64> = []
 
     private static let pageSize = 10
 
@@ -119,6 +122,12 @@ struct FeedView: View {
             CommentSheetView(episodeId: ep.id, initialCommentCount: ep.commentCount ?? 0)
                 .environmentObject(session)
         }
+        .fullScreenCover(item: $playerEntry) { entry in
+            NavigationStack {
+                PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
+                    .environmentObject(session)
+            }
+        }
     }
 
     @ViewBuilder
@@ -128,48 +137,71 @@ struct FeedView: View {
             Color.clear
                 .frame(width: size.width, height: size.height)
             HStack(alignment: .bottom, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(dramaTitle)
                         .font(.headline)
                         .foregroundStyle(.white)
                     Text("第 \(ep.episodeNumber) 集")
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.9))
+                    feedTags(ep)
+                    descriptionBlock(ep)
+                    Button {
+                        playerEntry = FeedPlayerEntry(
+                            dramaId: PlaybackURL.dramaId(episode: ep),
+                            episodeId: ep.id
+                        )
+                    } label: {
+                        Text("看全 \(ep.drama?.totalEpisodes ?? 0) 集")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(AppTheme.primary.opacity(0.85))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(spacing: 14) {
-                    Button {
+                    HGInteractionButton(
+                        icon: "heart.fill",
+                        label: likeCountText(ep),
+                        active: isLiked(ep)
+                    ) {
                         Task {
                             let point = CGPoint(x: size.width - 46, y: size.height * 0.58)
                             if await toggleFeedLike(ep) {
                                 addLikeBurst(at: point)
                             }
                         }
-                    } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: "heart.fill")
-                                .font(.title2)
-                                .foregroundStyle(isLiked(ep) ? Color.red : .white)
-                                .padding(10)
-                                .background(Circle().fill(Color.black.opacity(0.35)))
-                            Text(likeCountText(ep))
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white)
-                        }
                     }
                     .disabled(likingEpisodeIds.contains(ep.id))
 
-                    Button {
+                    HGInteractionButton(
+                        icon: "text.bubble.fill",
+                        label: commentCountText(ep)
+                    ) {
                         commentSheetEpisode = ep
-                    } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: "text.bubble.fill")
-                                .font(.title2)
+                    }
+
+                    HGInteractionButton(
+                        icon: "star.fill",
+                        label: "收藏",
+                        active: isCollected(ep)
+                    ) {
+                        Task { await toggleFeedCollect(ep) }
+                    }
+
+                    ShareLink(item: shareText(ep)) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.title2.weight(.semibold))
                                 .foregroundStyle(.white)
-                                .padding(10)
-                                .background(Circle().fill(Color.black.opacity(0.35)))
-                            Text(commentCountText(ep))
+                                .frame(width: 46, height: 46)
+                                .background(Circle().fill(Color.black.opacity(0.36)))
+                            Text("分享")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.white)
                         }
@@ -186,6 +218,50 @@ struct FeedView: View {
                 handleFeedDoubleTap(ep, location: value.location)
             }
         )
+    }
+
+    @ViewBuilder
+    private func feedTags(_ ep: Episode) -> some View {
+        let tags = resolvedTags(ep)
+        if !tags.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(tags, id: \.self) { tag in
+                        Text(tag)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.onSurface)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(AppTheme.feedTagFill)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(AppTheme.primary.opacity(0.45), lineWidth: 1))
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func descriptionBlock(_ ep: Episode) -> some View {
+        let text = ep.drama?.description ?? ""
+        if !text.isEmpty {
+            let expanded = expandedEpisodeIds.contains(ep.id)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(text)
+                    .font(.caption)
+                    .lineLimit(expanded ? 4 : 1)
+                    .foregroundStyle(.white.opacity(0.86))
+                Button(expanded ? "收起" : "展开") {
+                    if expanded {
+                        expandedEpisodeIds.remove(ep.id)
+                    } else {
+                        expandedEpisodeIds.insert(ep.id)
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.primaryLight)
+            }
+        }
     }
 
     private func rebuildPlayerForCurrent() {
@@ -284,6 +360,22 @@ struct FeedView: View {
         likedEpisodeIds.contains(ep.id)
     }
 
+    private func isCollected(_ ep: Episode) -> Bool {
+        collectedEpisodeIds.contains(ep.id)
+    }
+
+    private func resolvedTags(_ ep: Episode) -> [String] {
+        var tags = ep.drama?.categoryList ?? []
+        if tags.isEmpty, let c = ep.drama?.category, !c.isEmpty {
+            tags = c.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        }
+        return Array(tags.filter { !$0.isEmpty }.prefix(4))
+    }
+
+    private func shareText(_ ep: Episode) -> String {
+        "\(ep.drama?.title ?? "红果剧场") 第 \(ep.episodeNumber) 集"
+    }
+
     private func likeCountText(_ ep: Episode) -> String {
         let count = likeCounts[ep.id] ?? ep.likeCount ?? 0
         if count >= 10_000 {
@@ -336,6 +428,18 @@ struct FeedView: View {
         }
     }
 
+    private func toggleFeedCollect(_ ep: Episode) async {
+        guard session.isLoggedIn, !session.token.isEmpty else { return }
+        do {
+            try await APIClient.shared.collectForEpisodeDrama(episodeId: ep.id, token: session.token)
+            if isCollected(ep) {
+                collectedEpisodeIds.remove(ep.id)
+            } else {
+                collectedEpisodeIds.insert(ep.id)
+            }
+        } catch {}
+    }
+
     private func loadInteractionIfNeeded(for ep: Episode) async {
         guard session.isLoggedIn, !session.token.isEmpty else { return }
         do {
@@ -345,10 +449,22 @@ struct FeedView: View {
             } else {
                 likedEpisodeIds.remove(ep.id)
             }
+            if interaction.collected {
+                collectedEpisodeIds.insert(ep.id)
+            } else {
+                collectedEpisodeIds.remove(ep.id)
+            }
         } catch {}
     }
 
     private func addLikeBurst(at point: CGPoint) {
         likeBursts.append(LikeBurst(point: point))
     }
+}
+
+private struct FeedPlayerEntry: Identifiable {
+    let dramaId: Int64
+    let episodeId: Int64?
+
+    var id: String { "\(dramaId)-\(episodeId ?? 0)" }
 }
