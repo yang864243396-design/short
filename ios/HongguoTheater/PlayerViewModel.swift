@@ -371,18 +371,28 @@ final class PlayerViewModel: ObservableObject {
             ]
             asset = AVURLAsset(url: url, options: opts)
         }
+
+        /// 仅用 `AVPlayerItem.status` 轮询易与 RunLoop/MainActor 脱节，长时间停在 `.unknown` 会误判失败（用户看到「广告加载失败」）。
+        /// `load(.isPlayable)` 为 iOS 16+ 推荐路径。
+        do {
+            _ = try await asset.load(.isPlayable)
+        } catch {
+            await adPlaybackFailedFallbackToMain()
+            return
+        }
+
         let item = AVPlayerItem(asset: asset)
-        await waitForAdPlayerItemReadyOrTerminal(item, timeoutSeconds: 25)
-        if item.status == .failed {
-            await adPlaybackFailedFallbackToMain()
-            return
-        }
-        if item.status != .readyToPlay {
-            await adPlaybackFailedFallbackToMain()
-            return
-        }
+
         let pl = AVPlayer(playerItem: item)
         adPlayer = pl
+
+        adItemStatusCancellable = item.publisher(for: \.status)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                guard let self, status == .failed else { return }
+                Task { @MainActor in await self.adPlaybackFailedFallbackToMain() }
+            }
+
         pl.play()
         isPlaying = false
         let waitSec = max(20, min(120, maxWaitSeconds))
@@ -409,16 +419,6 @@ final class PlayerViewModel: ObservableObject {
             Task { @MainActor in
                 await self?.onAdVideoEnded()
             }
-        }
-    }
-
-    /// 等 `AVPlayerItem` 离开 `unknown`（与 Android prepare 后再 play 对齐）；超时则交由调用方判失败。
-    private func waitForAdPlayerItemReadyOrTerminal(_ item: AVPlayerItem, timeoutSeconds: Double) async {
-        if item.status != .unknown { return }
-        let deadline = Date().addingTimeInterval(timeoutSeconds)
-        while item.status == .unknown, Date() < deadline {
-            if Task.isCancelled { return }
-            try? await Task.sleep(nanoseconds: 48_000_000)
         }
     }
 
