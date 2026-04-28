@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import Combine
 import Foundation
 
 @MainActor
@@ -40,6 +41,7 @@ final class PlayerViewModel: ObservableObject {
     private var adEndObserver: NSObjectProtocol?
     private var adTimeoutTask: Task<Void, Never>?
     private var adCountdownTask: Task<Void, Never>?
+    private var adItemStatusCancellable: AnyCancellable?
     private var playTask: Task<Void, Never>?
     private var timeObserver: Any?
     /// 与 `timeObserver` 成对记录，避免 `player` 已换新实例却仍向旧/错误的 player 调 `removeTimeObserver` 崩溃。
@@ -215,6 +217,11 @@ final class PlayerViewModel: ObservableObject {
         guard let ep = current else { return }
         if shouldPaywall(ep), !grantsTemporaryUnlock { return }
         if Task.isCancelled { return }
+        // 对齐 Android `loadAndPlayAd()`：已登录且本集仍在 `EpisodeAdTempUnlock` 窗口内则直接起正片，不请求 `ad/video`。
+        if let t = authToken, !t.isEmpty, isTemporarilyUnlocked(ep.id) {
+            await playMainStream()
+            return
+        }
         let eid: Int64? = (authToken != nil && !authToken!.isEmpty) ? ep.id : nil
         if let p = await APIClient.shared.getAdVideoPayload(episodeId: eid, token: authToken) {
             if p.skipAd == true {
@@ -228,9 +235,9 @@ final class PlayerViewModel: ObservableObject {
             let mt = (p.mediaType ?? "video").lowercased()
             if Task.isCancelled { return }
             adGrantsTemporaryUnlock = grantsTemporaryUnlock || shouldPaywall(ep)
-            if mt == "image", let iu = resolveMedia(p.imageUrl) {
+            if mt == "image", let iu = ImageURL.resolve(p.imageUrl) {
                 await runImageAd(iu, seconds: dur)
-            } else if let vu = resolveMedia(p.videoUrl) {
+            } else if let vu = PlaybackURL.adVideoAbsoluteURL(p.videoUrl) {
                 // 片长时间约 dur 秒，超时取 2~3 倍作为兜底，与常见贴片长度同量级
                 let cap = min(120, max(30, dur * 3))
                 await runVideoAd(url: vu, durationSeconds: dur, maxWaitSeconds: cap)
@@ -238,23 +245,21 @@ final class PlayerViewModel: ObservableObject {
                 await playMainStream()
             }
         } else {
-            if grantsTemporaryUnlock || shouldPaywall(ep) {
-                grantTemporaryUnlock(ep.id)
-            }
             await playMainStream()
         }
     }
 
-    private func resolveMedia(_ raw: String?) -> URL? {
-        guard let s = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
-        if s.hasPrefix("http://") || s.hasPrefix("https://") { return URL(string: s) }
-        var origin = AppConfig.publicOrigin
-        if origin.hasSuffix("/") == false { origin += "/" }
-        let p = s.hasPrefix("/") ? String(s.dropFirst()) : s
-        return URL(string: origin + p)
+    /// 对齐 Android `PlayerActivity`：贴片期间后台 `precache` 当前待播正片，缩短关贴后起播等待。
+    private func precacheCurrentEpisodeWhileAdPlaying() async {
+        guard let ep = current else { return }
+        guard let u = PlaybackURL.url(for: ep) else { return }
+        var headers: [String: String] = [:]
+        if let t = authToken, !t.isEmpty { headers["Authorization"] = "Bearer \(t)" }
+        await VideoCacheManager.shared.precache(u, headers: headers, episodeId: ep.id)
     }
 
     private func runImageAd(_ url: URL, seconds: Int) async {
+        await precacheCurrentEpisodeWhileAdPlaying()
         showAd = true
         adCanClose = false
         adImageURL = url
@@ -276,6 +281,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func runVideoAd(url: URL, durationSeconds: Int, maxWaitSeconds: Int) async {
+        await precacheCurrentEpisodeWhileAdPlaying()
         adTimeoutTask?.cancel()
         adTimeoutTask = nil
         adCountdownTask?.cancel()
@@ -286,7 +292,20 @@ final class PlayerViewModel: ObservableObject {
         adPlayer?.pause()
         adPlayer = nil
         if let o = adEndObserver { NotificationCenter.default.removeObserver(o) }
-        let item = AVPlayerItem(url: url)
+        adItemStatusCancellable?.cancel()
+        adItemStatusCancellable = nil
+        let opts: [String: Any] = [
+            AVURLAssetAllowsExpensiveNetworkAccessKey: true,
+            AVURLAssetAllowsCellularAccessKey: true,
+        ]
+        let asset = AVURLAsset(url: url, options: opts)
+        let item = AVPlayerItem(asset: asset)
+        adItemStatusCancellable = item.publisher(for: \.status)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                guard let self, status == .failed else { return }
+                Task { @MainActor in await self.adPlaybackFailedFallbackToMain() }
+            }
         let pl = AVPlayer(playerItem: item)
         adPlayer = pl
         pl.play()
@@ -316,6 +335,28 @@ final class PlayerViewModel: ObservableObject {
                 await self?.onAdVideoEnded()
             }
         }
+    }
+
+    private func adPlaybackFailedFallbackToMain() async {
+        guard showAd else { return }
+        adItemStatusCancellable?.cancel()
+        adItemStatusCancellable = nil
+        adTimeoutTask?.cancel()
+        adTimeoutTask = nil
+        adCountdownTask?.cancel()
+        adCountdownTask = nil
+        if let o = adEndObserver {
+            NotificationCenter.default.removeObserver(o)
+            adEndObserver = nil
+        }
+        adPlayer?.pause()
+        adPlayer = nil
+        adImageURL = nil
+        adCountdown = 0
+        adCanClose = false
+        adGrantsTemporaryUnlock = false
+        showAd = false
+        await playMainStream()
     }
 
     private func onAdVideoEnded() async {
@@ -438,6 +479,8 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func clearAd() {
+        adItemStatusCancellable?.cancel()
+        adItemStatusCancellable = nil
         adTimeoutTask?.cancel()
         adTimeoutTask = nil
         adCountdownTask?.cancel()
@@ -502,7 +545,6 @@ final class PlayerViewModel: ObservableObject {
         commentCount = current?.commentCount ?? 0
     }
 
-    /// 对齐 Android `PlayerActivity.precacheNextEpisode`：仅后台整文件拉取下一集。
     private func prefetchNextEpisodeOnly() async {
         guard let cur = current, let idx = episodes.firstIndex(where: { $0.id == cur.id }) else { return }
         let next = idx + 1

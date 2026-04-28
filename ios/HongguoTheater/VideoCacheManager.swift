@@ -10,6 +10,16 @@ actor VideoCacheManager {
     private static let maxBytes: UInt64 = 200 * 1024 * 1024
     private static let cacheMarkerName = ".cache_v4"
 
+    /// 与 `URLSession.shared` 分离并限制并发，减轻「缓存/预拉过多」时的 `nw_connection_*` 压力。
+    private nonisolated static let precacheSession: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.httpMaximumConnectionsPerHost = 2
+        c.allowsCellularAccess = true
+        c.timeoutIntervalForRequest = 60
+        c.timeoutIntervalForResource = 300
+        return URLSession(configuration: c)
+    }()
+
     private let directory: URL
     private var exclusivePrecacheTask: Task<Void, Never>?
     private var precacheRunId: UUID?
@@ -92,6 +102,7 @@ actor VideoCacheManager {
     /// 已缓存则直接本地 `AVURLAsset`；否则在能探测到 `Content-Length` 时用自定义 scheme + ResourceLoader **边播边写**；
     /// 与 Android 一致失败时走直链并 **`precache`（会 cancel 前一个 precache）**。
     func playbackAVURLAsset(remoteURL: URL, headers: [String: String], episodeId: Int64) async -> AVURLAsset {
+        Self.evictIfNeeded(directory: directory, maxBytes: Self.maxBytes)
         if let file = cachedURL(for: remoteURL, episodeId: episodeId) {
             if episodeId > 0 {
                 streamLoadersByEpisodeId.removeValue(forKey: episodeId)
@@ -147,13 +158,14 @@ actor VideoCacheManager {
             defer {
                 Task { await VideoCacheManager.shared.finishPrecacheRun(run) }
             }
+            Self.evictIfNeeded(directory: directory, maxBytes: maxBytes)
             var request = URLRequest(url: remoteURL)
             request.timeoutInterval = 60
             for (k, v) in headers {
                 request.setValue(v, forHTTPHeaderField: k)
             }
             do {
-                let (tempURL, response) = try await URLSession.shared.download(for: request)
+                let (tempURL, response) = try await Self.precacheSession.download(for: request)
                 guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else { return }
                 if FileManager.default.fileExists(atPath: dest.path) {
                     try? FileManager.default.removeItem(at: dest)
@@ -261,7 +273,7 @@ actor VideoCacheManager {
         guard var files = try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-            options: []
+            options: [.skipsHiddenFiles]
         ) else { return }
 
         func size(_ url: URL) -> UInt64 {
@@ -270,6 +282,8 @@ actor VideoCacheManager {
         }
 
         var total = files.reduce(UInt64(0)) { $0 + size($1) }
+        /// 超出硬上限后按 LRU 删到 **90% 配额以下**，留出余量；含 `.mp4` 与边播边写 `.partial` 等占位，避免缓存膨胀拖垮网络栈。
+        let targetTrimBelow = maxBytes * 9 / 10
         guard total > maxBytes else { return }
 
         files.sort {
@@ -278,9 +292,10 @@ actor VideoCacheManager {
             return lhs < rhs
         }
 
-        for file in files where total > maxBytes {
+        for file in files where total > targetTrimBelow {
             if file.lastPathComponent == Self.cacheMarkerName { continue }
-            total = total > size(file) ? total - size(file) : 0
+            let sz = size(file)
+            total = total > sz ? total - sz : 0
             try? FileManager.default.removeItem(at: file)
         }
     }

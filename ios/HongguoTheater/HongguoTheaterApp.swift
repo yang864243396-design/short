@@ -14,6 +14,7 @@ struct HongguoTheaterApp: App {
                 .task {
                     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.defaultToSpeaker])
                     try? AVAudioSession.sharedInstance().setActive(true)
+                    await VideoCacheManager.shared.runEvictIfNeeded()
                     await AdPreloadManager.shared.warmupIfNeeded(isLoggedIn: session.isLoggedIn)
                 }
         }

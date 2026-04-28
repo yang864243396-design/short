@@ -245,7 +245,13 @@ struct PlayerView: View {
                 }
             )
             .onTapGesture {
-                vm.togglePlayPause()
+                if vm.showAd {
+                    if let ap = vm.adPlayer {
+                        if ap.rate > 0 { ap.pause() } else { ap.play() }
+                    }
+                } else {
+                    vm.togglePlayPause()
+                }
                 controlsVisible = true
             }
             .simultaneousGesture(
