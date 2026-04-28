@@ -214,7 +214,9 @@ struct PlayerView: View {
                             }
                         }
                     }
-                    .padding()
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, playerDockTopAlignPadding)
                     .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
                 }
                 }
@@ -486,6 +488,9 @@ struct PlayerView: View {
             )
         }
     }
+
+    /// 与 `playerDock` 自下而上的可视栈高度一致（进度条 12 + 选集 40 + 底部 6），使简介与右侧功能区底缘与进度条顶缘对齐。
+    private var playerDockTopAlignPadding: CGFloat { 12 + 40 + 6 }
 
     private var shareText: String {
         "\(vm.drama?.title ?? vm.current?.drama?.title ?? "红果剧场") \(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")"

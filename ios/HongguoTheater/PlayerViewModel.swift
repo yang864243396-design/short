@@ -40,6 +40,7 @@ final class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var adGrantsTemporaryUnlock = false
     private var temporaryUnlockExpiry: [Int64: Date] = [:]
+    private var mainEndObserver: NSObjectProtocol?
 
     init(
         dramaId: Int64,
@@ -382,6 +383,19 @@ final class PlayerViewModel: ObservableObject {
         }
         player = AVPlayer(playerItem: item)
         installTimeObserver()
+        if let o = mainEndObserver {
+            NotificationCenter.default.removeObserver(o)
+            mainEndObserver = nil
+        }
+        mainEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.onMainVideoPlayedToEnd()
+            }
+        }
         if ep.id == handoffEpisodeId, handoffPositionSeconds > 0 {
             let target = CMTime(seconds: handoffPositionSeconds, preferredTimescale: 600)
             await player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
@@ -396,6 +410,14 @@ final class PlayerViewModel: ObservableObject {
             _ = try? await APIClient.shared.recordHistory(episodeId: ep.id, token: t)
         }
         prefetchNextEpisode(after: ep, headers: headers)
+    }
+
+    private func onMainVideoPlayedToEnd() {
+        guard !showAd else { return }
+        guard current != nil else { return }
+        playbackProgress = 1
+        isPlaying = false
+        _ = selectRelativeEpisode(offset: 1)
     }
 
     private func clearAd() {
@@ -438,6 +460,10 @@ final class PlayerViewModel: ObservableObject {
             player.removeTimeObserver(timeObserver)
         }
         timeObserver = nil
+        if let o = mainEndObserver {
+            NotificationCenter.default.removeObserver(o)
+            mainEndObserver = nil
+        }
         playbackProgress = 0
         isPlaying = false
     }
