@@ -31,6 +31,10 @@ struct FeedView: View {
     @State private var feedStreamLoading = false
     /// 防止快速滑动时较早发起的 `playbackAVURLAsset` Task 在完成后覆盖当前条目。
     @State private var feedPlayerRebuildToken: Int = 0
+    /// 整表刷新后改变，强制重建 `VerticalPagingScrollView` 的 UIKit 子树，避免 Coordinator 与真实条数脱步只剩一页。
+    @State private var feedScrollLayoutNonce: Int = 0
+    /// 当前已绑定到播放器的分集（用于划走时取消上一部的 precache / Range 缓存写入）。
+    @State private var feedActiveStreamEpisodeId: Int64?
 
     private static let pageSize = 10
 
@@ -67,6 +71,7 @@ struct FeedView: View {
                                 AnyView(EmptyView())
                             }
                         }
+                        .id(feedScrollLayoutNonce)
                         if let tip = loadMoreError {
                             HStack(alignment: .top, spacing: 8) {
                                 Text(tip)
@@ -326,7 +331,6 @@ struct FeedView: View {
     }
 
     private func rebuildPlayerForCurrent() {
-        playerPauseClear()
         playbackProgress = 0
         guard currentIndex < episodes.count else { return }
         let ep = episodes[currentIndex]
@@ -341,17 +345,35 @@ struct FeedView: View {
         feedStreamLoading = true
         feedPlayerRebuildToken += 1
         let rebuildToken = feedPlayerRebuildToken
+        let previousStreamEp = feedActiveStreamEpisodeId
+        feedActiveStreamEpisodeId = ep.id
+
         Task { @MainActor in
             defer { feedStreamLoading = false }
-            let asset = await VideoCacheManager.shared.playbackAVURLAsset(remoteURL: u, headers: headers, episodeId: ep.id)
+            player?.pause()
+            clearTimeObserver()
+            await VideoCacheManager.shared.prepareFeedSwitch(fromEpisodeId: previousStreamEp, newEpisodeId: ep.id)
+            if player == nil {
+                player = AVPlayer()
+            }
+            player?.replaceCurrentItem(with: nil)
+
+            let asset = await VideoCacheManager.shared.playbackAVURLAssetForFeed(remoteURL: u, headers: headers, episodeId: ep.id)
             guard rebuildToken == feedPlayerRebuildToken,
                   currentIndex < episodes.count,
-                  episodes[currentIndex].id == ep.id else { return }
+                  episodes[currentIndex].id == ep.id else {
+                if currentIndex < episodes.count {
+                    feedActiveStreamEpisodeId = episodes[currentIndex].id
+                } else {
+                    feedActiveStreamEpisodeId = nil
+                }
+                return
+            }
+
             let item = AVPlayerItem(asset: asset)
-            clearTimeObserver()
-            player?.pause()
-            player = AVPlayer(playerItem: item)
+            player?.replaceCurrentItem(with: item)
             installTimeObserver(for: item)
+            feedActiveStreamEpisodeId = ep.id
             if parentTab == .feed {
                 player?.play()
             }
@@ -363,7 +385,8 @@ struct FeedView: View {
     private func playerPauseClear() {
         player?.pause()
         clearTimeObserver()
-        player = nil
+        player?.replaceCurrentItem(with: nil)
+        feedActiveStreamEpisodeId = nil
     }
 
     /// 全屏看剧最后一集结束（或手势切下一部）后回到刷剧：避免在手势/`fullScreenCover` 动画中途同步改状态导致交互假死。
@@ -468,6 +491,9 @@ struct FeedView: View {
 
     private func loadFeed(reset: Bool) async {
         if reset {
+            await VideoCacheManager.shared.resetFeedSession()
+            playerPauseClear()
+            player = nil
             page = 1
             episodes = []
             currentIndex = 0
@@ -529,6 +555,9 @@ struct FeedView: View {
                 if !append || indexWasInvalid {
                     rebuildPlayerForCurrent()
                 }
+            }
+            if !append, !episodes.isEmpty {
+                feedScrollLayoutNonce += 1
             }
         } catch {
             if append, !episodes.isEmpty {

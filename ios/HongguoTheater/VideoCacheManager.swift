@@ -40,6 +40,40 @@ actor VideoCacheManager {
         precacheRunId = nil
     }
 
+    /// 刷剧列表整表重置（下拉/重新进 Tab）：停掉整文件 precache + 所有边播边写。
+    func resetFeedSession() {
+        cancelPrecache()
+        for (_, loader) in streamLoadersByEpisodeId {
+            loader.cancel()
+        }
+        streamLoadersByEpisodeId.removeAll()
+    }
+
+    /// 划到上一部 → 下一部：取消上一部的整文件 precache 与边播边写；当前部在 `playbackAVURLAssetForFeed` 里再起后台 precache。
+    func prepareFeedSwitch(fromEpisodeId: Int64?, newEpisodeId: Int64) {
+        cancelPrecache()
+        guard let old = fromEpisodeId, old > 0, old != newEpisodeId else { return }
+        if let loader = streamLoadersByEpisodeId.removeValue(forKey: old) {
+            loader.cancel()
+        }
+    }
+
+    /// 刷剧专用：已落盘则 `file://`；否则 **直链 HTTP** 立即起播（跳过 HEAD + ResourceLoader 探测延迟），并后台 `precache` 同一 `ep_*.mp4`。
+    /// 全屏看剧仍用 `playbackAVURLAsset` 保留边播边写。
+    func playbackAVURLAssetForFeed(remoteURL: URL, headers: [String: String], episodeId: Int64) async -> AVURLAsset {
+        if let file = cachedURL(for: remoteURL, episodeId: episodeId) {
+            if episodeId > 0 {
+                streamLoadersByEpisodeId.removeValue(forKey: episodeId)
+            }
+            return AVURLAsset(url: file)
+        }
+        if episodeId > 0 {
+            streamLoadersByEpisodeId.removeValue(forKey: episodeId)
+        }
+        precache(remoteURL, headers: headers, episodeId: episodeId > 0 ? episodeId : nil)
+        return remoteAsset(url: remoteURL, headers: headers)
+    }
+
     /// - Parameters:
     ///   - episodeId: 分集 ID 作为稳定存储键（与全量缓存、边播边写一致）。
     func cachedURL(for remoteURL: URL, episodeId: Int64?) -> URL? {

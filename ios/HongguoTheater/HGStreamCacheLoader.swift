@@ -120,6 +120,14 @@ final class HGStreamCacheLoader: NSObject, AVAssetResourceLoaderDelegate {
         task.resume()
     }
 
+    /// 刷剧划走当前条时调用：停止 Range 拉取，避免与旧链路程竞争宽带上继续写 partial。
+    func cancel() {
+        processingQueue.async { [weak self] in
+            guard let self else { return }
+            self.session.invalidateAndCancel()
+        }
+    }
+
     private func writePartial(data: Data, at offset: Int64) {
         if !FileManager.default.fileExists(atPath: partialURL.path) {
             FileManager.default.createFile(atPath: partialURL.path, contents: nil)
