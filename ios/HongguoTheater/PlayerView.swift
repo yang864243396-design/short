@@ -1,4 +1,3 @@
-import AVKit
 import SwiftUI
 
 struct PlayerView: View {
@@ -45,7 +44,7 @@ struct PlayerView: View {
                 Color.black.ignoresSafeArea()
                 Group {
                     if vm.showAd, let adp = vm.adPlayer {
-                        VideoPlayer(player: adp)
+                        InlineVideoSurface(player: adp)
                             .ignoresSafeArea()
                     } else if vm.showAd, let u = vm.adImageURL {
                         ZStack {
@@ -68,7 +67,7 @@ struct PlayerView: View {
                         }
                         .ignoresSafeArea()
                     } else if let p = vm.player {
-                        VideoPlayer(player: p)
+                        InlineVideoSurface(player: p)
                             .ignoresSafeArea()
                     } else if vm.streamPreparing {
                         ProgressView("加载中…")

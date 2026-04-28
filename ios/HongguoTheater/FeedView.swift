@@ -1,5 +1,4 @@
 import AVFoundation
-import AVKit
 import SwiftUI
 
 /// 刷剧：竖向分页 + 单路 `AVPlayer` 置于底层，透明翻页；对齐 `getFeed` 与 Tab/前后台生命周期。
@@ -53,9 +52,8 @@ struct FeedView: View {
                 } else {
                     ZStack(alignment: .bottom) {
                         if let p = player {
-                            VideoPlayer(player: p)
+                            InlineVideoSurface(player: p)
                                 .ignoresSafeArea()
-                                .allowsHitTesting(false)
                         }
                         VerticalPagingScrollView(
                             currentIndex: $currentIndex,

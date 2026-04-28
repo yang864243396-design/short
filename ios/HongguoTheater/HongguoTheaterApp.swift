@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 @main
@@ -11,6 +12,8 @@ struct HongguoTheaterApp: App {
                 .tint(AppTheme.primary)
                 .preferredColorScheme(.dark)
                 .task {
+                    try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.defaultToSpeaker])
+                    try? AVAudioSession.sharedInstance().setActive(true)
                     await AdPreloadManager.shared.warmupIfNeeded(isLoggedIn: session.isLoggedIn)
                 }
         }

@@ -13,6 +13,8 @@ actor VideoCacheManager {
     private let directory: URL
     private var exclusivePrecacheTask: Task<Void, Never>?
     private var precacheRunId: UUID?
+    /// `AVAssetResourceLoader` 对 delegate 为 **weak**；必须在 App 生命周期内强引用 `HGStreamCacheLoader`，否则会立即释放导致拉流失败、画面卡在「不可播」态。
+    private var streamLoadersByEpisodeId: [Int64: HGStreamCacheLoader] = [:]
 
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -52,6 +54,9 @@ actor VideoCacheManager {
     /// 与 Android 一致失败时走直链并 **`precache`（会 cancel 前一个 precache）**。
     func playbackAVURLAsset(remoteURL: URL, headers: [String: String], episodeId: Int64) async -> AVURLAsset {
         if let file = cachedURL(for: remoteURL, episodeId: episodeId) {
+            if episodeId > 0 {
+                streamLoadersByEpisodeId.removeValue(forKey: episodeId)
+            }
             return AVURLAsset(url: file)
         }
         guard episodeId > 0 else {
@@ -70,11 +75,13 @@ actor VideoCacheManager {
                 partialURL: partial,
                 contentLength: length
             )
+            streamLoadersByEpisodeId[episodeId] = loader
             let custom = URL(string: "hgstream://episode/\(episodeId)")!
             let asset = AVURLAsset(url: custom)
             asset.resourceLoader.setDelegate(loader, queue: loader.processingQueue)
             return asset
         }
+        streamLoadersByEpisodeId.removeValue(forKey: episodeId)
         precache(remoteURL, headers: headers, episodeId: episodeId)
         return remoteAsset(url: remoteURL, headers: headers)
     }
@@ -138,6 +145,7 @@ actor VideoCacheManager {
 
     func clearAll() {
         cancelPrecache()
+        streamLoadersByEpisodeId.removeAll()
         if let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
             for file in files {
                 try? FileManager.default.removeItem(at: file)
