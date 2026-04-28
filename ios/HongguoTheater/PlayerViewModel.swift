@@ -42,6 +42,8 @@ final class PlayerViewModel: ObservableObject {
     private var adCountdownTask: Task<Void, Never>?
     private var playTask: Task<Void, Never>?
     private var timeObserver: Any?
+    /// 与 `timeObserver` 成对记录，避免 `player` 已换新实例却仍向旧/错误的 player 调 `removeTimeObserver` 崩溃。
+    private var timeObserverPlayer: AVPlayer?
     private var adGrantsTemporaryUnlock = false
     private var temporaryUnlockExpiry: [Int64: Date] = [:]
     private var mainEndObserver: NSObjectProtocol?
@@ -355,6 +357,7 @@ final class PlayerViewModel: ObservableObject {
         confirmAbandonAd = false
         clearAd()
         Task { await VideoCacheManager.shared.cancelPrecache() }
+        clearTimeObserver()
         player?.pause()
         player = nil
         isPlaying = false
@@ -453,26 +456,35 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func installTimeObserver() {
-        guard let player, timeObserver == nil else { return }
+        removePeriodicTimeObserverOnly()
+        guard let player else { return }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
-            guard let self else { return }
-            let duration = player.currentItem?.duration.seconds ?? 0
-            guard duration.isFinite, duration > 0 else {
-                self.playbackProgress = 0
-                return
+            Task { @MainActor in
+                guard let self else { return }
+                let duration = player.currentItem?.duration.seconds ?? 0
+                guard duration.isFinite, duration > 0 else {
+                    self.playbackProgress = 0
+                    return
+                }
+                self.playbackProgress = min(1, max(0, time.seconds / duration))
             }
-            self.playbackProgress = min(1, max(0, time.seconds / duration))
         }
+        timeObserverPlayer = player
+    }
+
+    private func removePeriodicTimeObserverOnly() {
+        if let token = timeObserver, let owner = timeObserverPlayer {
+            owner.removeTimeObserver(token)
+        }
+        timeObserver = nil
+        timeObserverPlayer = nil
     }
 
     private func clearTimeObserver() {
-        if let timeObserver, let player {
-            player.removeTimeObserver(timeObserver)
-        }
-        timeObserver = nil
+        removePeriodicTimeObserverOnly()
         if let o = mainEndObserver {
             NotificationCenter.default.removeObserver(o)
             mainEndObserver = nil

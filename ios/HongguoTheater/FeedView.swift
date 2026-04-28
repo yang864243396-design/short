@@ -27,6 +27,8 @@ struct FeedView: View {
     @State private var playbackError: String?
     @State private var playbackProgress: Double = 0
     @State private var timeObserver: Any?
+    /// 必须与 `timeObserver` 成对使用：`removeTimeObserver` 只能由添加它的同一个 `AVPlayer` 调用。
+    @State private var timeObserverPlayer: AVPlayer?
     @State private var rankingSheet: RankingSheetEntry?
     @State private var feedStreamLoading = false
     /// 防止快速滑动时较早发起的 `playbackAVURLAsset` Task 在完成后覆盖当前条目。
@@ -178,9 +180,13 @@ struct FeedView: View {
         .hgDialog(Binding(
             get: {
                 playbackError.map {
-                    HGDialog(title: "提示", message: $0, primaryTitle: "确定", informStyle: true) {
-                        playbackError = nil
-                    }
+                    HGDialog(
+                        title: "提示",
+                        message: $0,
+                        primaryTitle: "确定",
+                        informStyle: true,
+                        onPrimary: { playbackError = nil }
+                    )
                 }
             },
             set: { if $0 == nil { playbackError = nil } }
@@ -439,25 +445,34 @@ struct FeedView: View {
     }
 
     private func installTimeObserver(for item: AVPlayerItem) {
-        guard let player, timeObserver == nil else { return }
+        removePeriodicObserverIfNeeded()
+        guard let player else { return }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main
         ) { time in
-            let duration = item.duration.seconds
-            guard duration.isFinite, duration > 0 else {
-                playbackProgress = 0
-                return
+            Task { @MainActor in
+                let duration = item.duration.seconds
+                guard duration.isFinite, duration > 0 else {
+                    playbackProgress = 0
+                    return
+                }
+                playbackProgress = min(1, max(0, time.seconds / duration))
             }
-            playbackProgress = min(1, max(0, time.seconds / duration))
         }
+        timeObserverPlayer = player
+    }
+
+    private func removePeriodicObserverIfNeeded() {
+        if let token = timeObserver, let owner = timeObserverPlayer {
+            owner.removeTimeObserver(token)
+        }
+        timeObserver = nil
+        timeObserverPlayer = nil
     }
 
     private func clearTimeObserver() {
-        if let timeObserver, let player {
-            player.removeTimeObserver(timeObserver)
-        }
-        timeObserver = nil
+        removePeriodicObserverIfNeeded()
     }
 
     /// 对齐 Android：全屏 `precacheNextEpisode`；Feed 仅预拉**下一条**。

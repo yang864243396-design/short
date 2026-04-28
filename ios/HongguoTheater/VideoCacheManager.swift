@@ -19,10 +19,11 @@ actor VideoCacheManager {
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         directory = base.appendingPathComponent("video_cache", isDirectory: true)
-        ensureCacheDirectory()
+        Self.ensureCacheDirectory(at: directory)
     }
 
-    private func ensureCacheDirectory() {
+    /// Actor 的 `init` 为非隔离上下文，不能直接调用隔离方法；目录 bootstrap 用静态方法即可。
+    private nonisolated static func ensureCacheDirectory(at directory: URL) {
         let marker = directory.appendingPathComponent(Self.cacheMarkerName)
         if FileManager.default.fileExists(atPath: directory.path), !FileManager.default.fileExists(atPath: marker.path) {
             try? FileManager.default.removeItem(at: directory)
@@ -31,6 +32,10 @@ actor VideoCacheManager {
         if !FileManager.default.fileExists(atPath: marker.path) {
             FileManager.default.createFile(atPath: marker.path, contents: nil)
         }
+    }
+
+    private func ensureCacheDirectory() {
+        Self.ensureCacheDirectory(at: directory)
     }
 
     /// 对齐 Android `ExoPlayerCache.cancelPrecache`。
