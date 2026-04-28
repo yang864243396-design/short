@@ -287,12 +287,10 @@ struct AdVideoPayload: Decodable, Sendable {
     let videoUrl: String?
     let imageUrl: String?
 
+    /// 与全局 `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase` 配合：JSON 的 `skip_ad` 会先规范为 `skipAd` 再匹配。
+    /// 若再写 `= "skip_ad"` 会与策略冲突，解码整包失败，`getAdVideoPayload` 恒为 nil（Android Gson 无此问题）。
     enum CodingKeys: String, CodingKey {
-        case skipAd = "skip_ad"
-        case duration
-        case mediaType = "media_type"
-        case videoUrl = "video_url"
-        case imageUrl = "image_url"
+        case skipAd, duration, mediaType, videoUrl, imageUrl
     }
 
     init(from decoder: Decoder) throws {
