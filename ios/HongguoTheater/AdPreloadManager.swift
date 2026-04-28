@@ -12,7 +12,7 @@ actor AdPreloadManager {
         guard let payload = await APIClient.shared.getAdVideoPayload(episodeId: nil, token: nil) else { return }
         let mediaType = (payload.mediaType ?? "video").lowercased()
         guard mediaType != "image", let url = resolveMedia(payload.videoUrl) else { return }
-        await VideoCacheManager.shared.prefetch(url)
+        await VideoCacheManager.shared.precache(url)
     }
 
     private func resolveMedia(_ raw: String?) -> URL? {

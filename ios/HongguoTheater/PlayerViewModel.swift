@@ -27,9 +27,13 @@ final class PlayerViewModel: ObservableObject {
     @Published var confirmAbandonAd: Bool = false
     @Published var rechargePrompt: Bool = false
 
+    /// 正片资源解析/缓存命中阶段（用于加载态 UI）
+    @Published var streamPreparing: Bool = false
+
     let dramaId: Int64
     private let startEpisodeId: Int64?
     private let handoffEpisodeId: Int64?
+    private let onRequestNextDramaFromFeed: (() -> Void)?
     private let handoffStreamURL: URL?
     private let handoffPositionSeconds: Double
     var authToken: String?
@@ -46,13 +50,15 @@ final class PlayerViewModel: ObservableObject {
         dramaId: Int64,
         startEpisodeId: Int64?,
         handoffStreamURL: URL? = nil,
-        handoffPositionSeconds: Double = 0
+        handoffPositionSeconds: Double = 0,
+        onRequestNextDramaFromFeed: (() -> Void)? = nil
     ) {
         self.dramaId = dramaId
         self.startEpisodeId = startEpisodeId
         self.handoffEpisodeId = startEpisodeId
         self.handoffStreamURL = handoffStreamURL
         self.handoffPositionSeconds = handoffPositionSeconds
+        self.onRequestNextDramaFromFeed = onRequestNextDramaFromFeed
     }
 
     private func shouldPaywall(_ ep: Episode) -> Bool {
@@ -91,6 +97,7 @@ final class PlayerViewModel: ObservableObject {
 
     func selectEpisode(_ ep: Episode) {
         playTask?.cancel()
+        Task { await VideoCacheManager.shared.cancelPrecache() }
         clearTimeObserver()
         clearAd()
         current = ep
@@ -347,6 +354,7 @@ final class PlayerViewModel: ObservableObject {
     func abandonAdUnlock() {
         confirmAbandonAd = false
         clearAd()
+        Task { await VideoCacheManager.shared.cancelPrecache() }
         player?.pause()
         player = nil
         isPlaying = false
@@ -367,9 +375,9 @@ final class PlayerViewModel: ObservableObject {
         if let t = authToken, !t.isEmpty {
             headers["Authorization"] = "Bearer \(t)"
         }
-        let playableURL = await VideoCacheManager.shared.playableURL(for: u, headers: headers)
-        let options: [String: Any]? = playableURL.isFileURL || headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        let asset = AVURLAsset(url: playableURL, options: options)
+        streamPreparing = true
+        defer { streamPreparing = false }
+        let asset = await VideoCacheManager.shared.playbackAVURLAsset(remoteURL: u, headers: headers, episodeId: ep.id)
         let item = AVPlayerItem(asset: asset)
         NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
@@ -409,7 +417,7 @@ final class PlayerViewModel: ObservableObject {
             }
             _ = try? await APIClient.shared.recordHistory(episodeId: ep.id, token: t)
         }
-        prefetchNextEpisode(after: ep, headers: headers)
+        await prefetchNextEpisodeOnly()
     }
 
     private func onMainVideoPlayedToEnd() {
@@ -417,7 +425,11 @@ final class PlayerViewModel: ObservableObject {
         guard current != nil else { return }
         playbackProgress = 1
         isPlaying = false
-        _ = selectRelativeEpisode(offset: 1)
+        if !selectRelativeEpisode(offset: 1), isOnLastEpisode {
+            if let cb = onRequestNextDramaFromFeed {
+                Task { @MainActor in cb() }
+            }
+        }
     }
 
     private func clearAd() {
@@ -477,13 +489,15 @@ final class PlayerViewModel: ObservableObject {
         commentCount = current?.commentCount ?? 0
     }
 
-    private func prefetchNextEpisode(after ep: Episode, headers: [String: String]) {
-        guard let idx = episodes.firstIndex(where: { $0.id == ep.id }) else { return }
+    /// 对齐 Android `PlayerActivity.precacheNextEpisode`：仅后台整文件拉取下一集。
+    private func prefetchNextEpisodeOnly() async {
+        guard let cur = current, let idx = episodes.firstIndex(where: { $0.id == cur.id }) else { return }
         let next = idx + 1
         guard episodes.indices.contains(next), let url = PlaybackURL.url(for: episodes[next]) else { return }
-        Task {
-            await VideoCacheManager.shared.prefetch(url, headers: headers)
-        }
+        var hdr: [String: String] = [:]
+        if let t = authToken, !t.isEmpty { hdr["Authorization"] = "Bearer \(t)" }
+        let eid = episodes[next].id
+        await VideoCacheManager.shared.precache(url, headers: hdr, episodeId: eid)
     }
 
     private func isTemporarilyUnlocked(_ episodeId: Int64) -> Bool {

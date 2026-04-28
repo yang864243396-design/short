@@ -29,6 +29,7 @@ struct FeedView: View {
     @State private var playbackProgress: Double = 0
     @State private var timeObserver: Any?
     @State private var rankingSheet: RankingSheetEntry?
+    @State private var feedStreamLoading = false
 
     private static let pageSize = 10
 
@@ -86,6 +87,16 @@ struct FeedView: View {
                                 likeBursts.removeAll { $0.id == burst.id }
                             }
                         }
+                        if feedStreamLoading, !episodes.isEmpty {
+                            ZStack {
+                                Color.black.opacity(0.35)
+                                ProgressView("加载中…")
+                                    .tint(.white)
+                                    .foregroundStyle(.white)
+                            }
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                        }
                     }
                 }
             }
@@ -140,16 +151,11 @@ struct FeedView: View {
                     handoffStreamURL: entry.streamURL,
                     handoffPositionSeconds: entry.positionSeconds,
                     onRequestNextDramaFromFeed: {
-                        playerEntry = nil
-                        scrollAfterDramaId = entry.dramaId
+                        let dramaId = entry.dramaId
                         Task { @MainActor in
-                            tryScrollAfterDrama()
-                            if scrollAfterDramaId > 0, !loading {
-                                await loadMore()
-                                tryScrollAfterDrama()
-                            }
-                            rebuildPlayerForCurrent()
-                            player?.play()
+                            playerEntry = nil
+                            await Task.yield()
+                            await advanceFeedAfterFullScreenDrama(dramaId: dramaId)
                         }
                     }
                 )
@@ -318,9 +324,7 @@ struct FeedView: View {
     }
 
     private func rebuildPlayerForCurrent() {
-        player?.pause()
-        clearTimeObserver()
-        player = nil
+        playerPauseClear()
         playbackProgress = 0
         guard currentIndex < episodes.count else { return }
         let ep = episodes[currentIndex]
@@ -329,19 +333,57 @@ struct FeedView: View {
         if session.isLoggedIn, !session.token.isEmpty {
             headers["Authorization"] = "Bearer \(session.token)"
         }
+        feedStreamLoading = true
         Task { @MainActor in
-            let playableURL = await VideoCacheManager.shared.playableURL(for: u, headers: headers)
-            let options: [String: Any]? = playableURL.isFileURL || headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
-            let asset = AVURLAsset(url: playableURL, options: options)
+            defer { feedStreamLoading = false }
+            let asset = await VideoCacheManager.shared.playbackAVURLAsset(remoteURL: u, headers: headers, episodeId: ep.id)
             let item = AVPlayerItem(asset: asset)
             player = AVPlayer(playerItem: item)
             installTimeObserver(for: item)
             if parentTab == .feed, scenePhase == .active {
                 player?.play()
             }
-            prefetchNeighbor(after: currentIndex, headers: headers)
+            await prefetchFeedNextOnly(index: currentIndex, headers: headers)
         }
         Task { await loadInteractionIfNeeded(for: ep) }
+    }
+
+    private func playerPauseClear() {
+        player?.pause()
+        clearTimeObserver()
+        player = nil
+    }
+
+    /// 全屏看剧最后一集结束（或手势切下一部）后回到刷剧：避免在手势/`fullScreenCover` 动画中途同步改状态导致交互假死。
+    private func advanceFeedAfterFullScreenDrama(dramaId: Int64) async {
+        guard dramaId > 0, !episodes.isEmpty else {
+            rebuildPlayerForCurrent()
+            resumeFeedPlaybackIfNeeded()
+            return
+        }
+        var advanced = false
+        if let next = findNextDramaIndex(after: dramaId) {
+            if next < episodes.count, next != currentIndex {
+                currentIndex = next
+                advanced = true
+            }
+        }
+        if !advanced {
+            if !loading { await loadMore() }
+            if let next = findNextDramaIndex(after: dramaId), next < episodes.count, next != currentIndex {
+                currentIndex = next
+                advanced = true
+            }
+        }
+        if !advanced {
+            rebuildPlayerForCurrent()
+            resumeFeedPlaybackIfNeeded()
+        }
+    }
+
+    private func resumeFeedPlaybackIfNeeded() {
+        guard parentTab == .feed, scenePhase == .active else { return }
+        player?.play()
     }
 
     private var feedProgressBar: some View {
@@ -384,12 +426,12 @@ struct FeedView: View {
         timeObserver = nil
     }
 
-    private func prefetchNeighbor(after index: Int, headers: [String: String]) {
-        let next = index + 1
-        guard episodes.indices.contains(next), let url = PlaybackURL.url(for: episodes[next]) else { return }
-        Task {
-            await VideoCacheManager.shared.prefetch(url, headers: headers)
-        }
+    /// 对齐 Android：全屏 `precacheNextEpisode`；Feed 仅预拉**下一条**。
+    private func prefetchFeedNextOnly(index: Int, headers: [String: String]) async {
+        let j = index + 1
+        guard episodes.indices.contains(j), let url = PlaybackURL.url(for: episodes[j]) else { return }
+        let eid = episodes[j].id
+        await VideoCacheManager.shared.precache(url, headers: headers, episodeId: eid)
     }
 
     private func tryScrollAfterDrama() {

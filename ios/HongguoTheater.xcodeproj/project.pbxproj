@@ -32,6 +32,7 @@
 		B00000000000000000000018 /* VideoCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001A /* VideoCacheManager.swift */; };
 		B00000000000000000000019 /* AdPreloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001B /* AdPreloadManager.swift */; };
 		B0000000000000000000001A /* RankingBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001C /* RankingBadgeView.swift */; };
+		B0000000000000000000001B /* HGStreamCacheLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001D /* HGStreamCacheLoader.swift */; };
 		B00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000016 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -61,6 +62,7 @@
 		F0000000000000000000001A /* VideoCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCacheManager.swift; sourceTree = "<group>"; };
 		F0000000000000000000001B /* AdPreloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdPreloadManager.swift; sourceTree = "<group>"; };
 		F0000000000000000000001C /* RankingBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankingBadgeView.swift; sourceTree = "<group>"; };
+		F0000000000000000000001D /* HGStreamCacheLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HGStreamCacheLoader.swift; sourceTree = "<group>"; };
 		F00000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F00000000000000000000018 /* HongguoTheater.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HongguoTheater.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -95,6 +97,7 @@
 				F00000000000000000000004 /* CommentSheetView.swift */,
 				F00000000000000000000005 /* FeedView.swift */,
 				F00000000000000000000019 /* HGDialog.swift */,
+				F0000000000000000000001D /* HGStreamCacheLoader.swift */,
 				F00000000000000000000006 /* HomeView.swift */,
 				F00000000000000000000007 /* HongguoTheaterApp.swift */,
 				F00000000000000000000008 /* ImageURL.swift */,
@@ -205,6 +208,7 @@
 				B00000000000000000000004 /* CommentSheetView.swift in Sources */,
 				B00000000000000000000005 /* FeedView.swift in Sources */,
 				B00000000000000000000017 /* HGDialog.swift in Sources */,
+				B0000000000000000000001B /* HGStreamCacheLoader.swift in Sources */,
 				B00000000000000000000006 /* HomeView.swift in Sources */,
 				B00000000000000000000007 /* HongguoTheaterApp.swift in Sources */,
 				B00000000000000000000008 /* ImageURL.swift in Sources */,

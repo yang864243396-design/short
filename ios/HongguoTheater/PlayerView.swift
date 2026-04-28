@@ -30,7 +30,8 @@ struct PlayerView: View {
             dramaId: dramaId,
             startEpisodeId: episodeId,
             handoffStreamURL: handoffStreamURL,
-            handoffPositionSeconds: handoffPositionSeconds
+            handoffPositionSeconds: handoffPositionSeconds,
+            onRequestNextDramaFromFeed: onRequestNextDramaFromFeed
         ))
     }
 
@@ -70,6 +71,10 @@ struct PlayerView: View {
                         VideoPlayer(player: p)
                             .ignoresSafeArea()
                             .disabled(needsUnlock)
+                    } else if vm.streamPreparing {
+                        ProgressView("加载中…")
+                            .tint(.white)
+                            .foregroundStyle(.white)
                     } else if vm.busy {
                         ProgressView()
                             .tint(.white)
@@ -252,7 +257,9 @@ struct PlayerView: View {
                         if value.translation.height < -80 {
                             if !vm.selectRelativeEpisode(offset: 1), vm.isOnLastEpisode {
                                 if let onRequestNextDramaFromFeed {
-                                    onRequestNextDramaFromFeed()
+                                    Task { @MainActor in
+                                        onRequestNextDramaFromFeed()
+                                    }
                                 } else {
                                     hgDialog = HGDialog(
                                         title: "提示",
