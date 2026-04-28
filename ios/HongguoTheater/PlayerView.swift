@@ -70,7 +70,6 @@ struct PlayerView: View {
                     } else if let p = vm.player {
                         VideoPlayer(player: p)
                             .ignoresSafeArea()
-                            .disabled(needsUnlock)
                     } else if vm.streamPreparing {
                         ProgressView("加载中…")
                             .tint(.white)

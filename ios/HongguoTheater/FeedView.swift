@@ -341,7 +341,9 @@ struct FeedView: View {
         Task { @MainActor in
             defer { feedStreamLoading = false }
             let asset = await VideoCacheManager.shared.playbackAVURLAsset(remoteURL: u, headers: headers, episodeId: ep.id)
-            guard rebuildToken == feedPlayerRebuildToken else { return }
+            guard rebuildToken == feedPlayerRebuildToken,
+                  currentIndex < episodes.count,
+                  episodes[currentIndex].id == ep.id else { return }
             let item = AVPlayerItem(asset: asset)
             clearTimeObserver()
             player?.pause()
@@ -498,8 +500,14 @@ struct FeedView: View {
             loadError = nil
             loadMoreError = nil
             if !episodes.isEmpty {
-                if currentIndex >= episodes.count { currentIndex = max(0, episodes.count - 1) }
-                rebuildPlayerForCurrent()
+                let indexWasInvalid = currentIndex >= episodes.count
+                if indexWasInvalid {
+                    currentIndex = max(0, episodes.count - 1)
+                }
+                // 加载更多时不应重建当前播放：会清空 player 且抬高 token，易导致异步任务全部被 guard 丢弃而无法自动播放。
+                if !append || indexWasInvalid {
+                    rebuildPlayerForCurrent()
+                }
                 tryScrollAfterDrama()
             }
         } catch {
