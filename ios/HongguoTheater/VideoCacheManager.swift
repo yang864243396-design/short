@@ -76,7 +76,7 @@ actor VideoCacheManager {
     /// 刷剧专用：已落盘则 `file://`；否则 **直链 HTTP** 立即起播（跳过 HEAD + ResourceLoader 探测延迟），并后台 `precache` 同一 `ep_*.mp4`。
     /// 全屏看剧仍用 `playbackAVURLAsset` 保留边播边写。
     func playbackAVURLAssetForFeed(remoteURL: URL, headers: [String: String], episodeId: Int64) async -> AVURLAsset {
-        if let file = cachedURL(for: remoteURL, episodeId: episodeId) {
+        if let file = cachedURL(for: remoteURL, episodeId: episodeId, adVideoId: nil) {
             if episodeId > 0 {
                 streamLoadersByEpisodeId.removeValue(forKey: episodeId)
             }
@@ -85,14 +85,27 @@ actor VideoCacheManager {
         if episodeId > 0 {
             streamLoadersByEpisodeId.removeValue(forKey: episodeId)
         }
-        precache(remoteURL, headers: headers, episodeId: episodeId > 0 ? episodeId : nil)
+        precache(remoteURL, headers: headers, episodeId: episodeId > 0 ? episodeId : nil, adVideoId: nil)
         return remoteAsset(url: remoteURL, headers: headers)
     }
 
-    /// - Parameters:
-    ///   - episodeId: 分集 ID 作为稳定存储键（与全量缓存、边播边写一致）。
-    func cachedURL(for remoteURL: URL, episodeId: Int64?) -> URL? {
-        let key = Self.storageKey(remoteURL: remoteURL, episodeId: episodeId)
+    /// 片头广告：与分集缓存隔离，同一 `ad_videos.id` 复用本地 `ad_*.mp4`（签 URL 会变，键用素材 id）。
+    func playbackAVURLAssetForAd(remoteURL: URL, headers: [String: String], adVideoId: Int64) async -> AVURLAsset {
+        Self.evictIfNeeded(directory: directory, maxBytes: Self.maxBytes)
+        guard adVideoId > 0 else {
+            precache(remoteURL, headers: headers, episodeId: nil, adVideoId: nil)
+            return remoteAsset(url: remoteURL, headers: headers)
+        }
+        if let file = cachedURL(for: remoteURL, episodeId: nil, adVideoId: adVideoId) {
+            return AVURLAsset(url: file)
+        }
+        precache(remoteURL, headers: headers, episodeId: nil, adVideoId: adVideoId)
+        return remoteAsset(url: remoteURL, headers: headers)
+    }
+
+    /// `episodeId`（`ep_*`）与片头素材 `adVideoId`（`ad_*`）互斥优先级：优先广告 id，便于签 URL 变化时仍能命中缓存。
+    func cachedURL(for remoteURL: URL, episodeId: Int64?, adVideoId: Int64? = nil) -> URL? {
+        let key = Self.storageKey(remoteURL: remoteURL, episodeId: episodeId, adVideoId: adVideoId)
         let url = fileURL(forStorageKey: key)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         touch(url)
@@ -103,17 +116,17 @@ actor VideoCacheManager {
     /// 与 Android 一致失败时走直链并 **`precache`（会 cancel 前一个 precache）**。
     func playbackAVURLAsset(remoteURL: URL, headers: [String: String], episodeId: Int64) async -> AVURLAsset {
         Self.evictIfNeeded(directory: directory, maxBytes: Self.maxBytes)
-        if let file = cachedURL(for: remoteURL, episodeId: episodeId) {
+        if let file = cachedURL(for: remoteURL, episodeId: episodeId, adVideoId: nil) {
             if episodeId > 0 {
                 streamLoadersByEpisodeId.removeValue(forKey: episodeId)
             }
             return AVURLAsset(url: file)
         }
         guard episodeId > 0 else {
-            precache(remoteURL, headers: headers, episodeId: nil)
+            precache(remoteURL, headers: headers, episodeId: nil, adVideoId: nil)
             return remoteAsset(url: remoteURL, headers: headers)
         }
-        let key = Self.storageKey(remoteURL: remoteURL, episodeId: episodeId)
+        let key = Self.storageKey(remoteURL: remoteURL, episodeId: episodeId, adVideoId: nil)
         let dest = fileURL(forStorageKey: key)
         let partial = directory.appendingPathComponent(key).appendingPathExtension("partial")
         let length = await Self.probeContentLength(url: remoteURL, headers: headers)
@@ -132,20 +145,20 @@ actor VideoCacheManager {
             return asset
         }
         streamLoadersByEpisodeId.removeValue(forKey: episodeId)
-        precache(remoteURL, headers: headers, episodeId: episodeId)
+        precache(remoteURL, headers: headers, episodeId: episodeId, adVideoId: nil)
         return remoteAsset(url: remoteURL, headers: headers)
     }
 
     /// 兼容旧调用：返回用于 `AVURLAsset(url:)` 的 URL（无 ResourceLoader）。
     func playableURL(for remoteURL: URL, headers: [String: String], episodeId: Int64? = nil) async -> URL {
-        if let u = cachedURL(for: remoteURL, episodeId: episodeId) { return u }
-        precache(remoteURL, headers: headers, episodeId: episodeId)
+        if let u = cachedURL(for: remoteURL, episodeId: episodeId, adVideoId: nil) { return u }
+        precache(remoteURL, headers: headers, episodeId: episodeId, adVideoId: nil)
         return remoteURL
     }
 
     /// 对齐 Android `ExoPlayerCache.precache`：先 `cancelPrecache`，再整文件下载；与播放写入同一 `ep_*.mp4`。
-    func precache(_ remoteURL: URL, headers: [String: String] = [:], episodeId: Int64? = nil) {
-        let key = Self.storageKey(remoteURL: remoteURL, episodeId: episodeId)
+    func precache(_ remoteURL: URL, headers: [String: String] = [:], episodeId: Int64? = nil, adVideoId: Int64? = nil) {
+        let key = Self.storageKey(remoteURL: remoteURL, episodeId: episodeId, adVideoId: adVideoId)
         let dest = fileURL(forStorageKey: key)
         if FileManager.default.fileExists(atPath: dest.path) { return }
 
@@ -245,7 +258,10 @@ actor VideoCacheManager {
         return -1
     }
 
-    static func storageKey(remoteURL: URL, episodeId: Int64?) -> String {
+    static func storageKey(remoteURL: URL, episodeId: Int64?, adVideoId: Int64? = nil) -> String {
+        if let aid = adVideoId, aid > 0 {
+            return "ad_\(aid)"
+        }
         if let id = episodeId, id > 0 {
             return "ep_\(id)"
         }

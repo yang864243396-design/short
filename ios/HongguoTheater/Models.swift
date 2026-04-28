@@ -281,6 +281,8 @@ struct CommentLikeResult: Decodable, Sendable {
 
 // MARK: - 播放前广告（GET ad/video）
 struct AdVideoPayload: Decodable, Sendable {
+    /// 后台 `ad_videos.id`，用于本地整文件缓存键 `ad_{id}`（与分集 `ep_` 隔离）；缺省时仍按 URL 哈希落盘。
+    let id: Int64?
     let skipAd: Bool?
     let duration: Int?
     let mediaType: String?
@@ -290,11 +292,21 @@ struct AdVideoPayload: Decodable, Sendable {
     /// 与全局 `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase` 配合：JSON 的 `skip_ad` 会先规范为 `skipAd` 再匹配。
     /// 若再写 `= "skip_ad"` 会与策略冲突，解码整包失败，`getAdVideoPayload` 恒为 nil（Android Gson 无此问题）。
     enum CodingKeys: String, CodingKey {
+        case id
         case skipAd, duration, mediaType, videoUrl, imageUrl
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let v = try? c.decodeIfPresent(Int64.self, forKey: .id) {
+            id = v
+        } else if let u = try? c.decodeIfPresent(UInt.self, forKey: .id) {
+            id = Int64(u)
+        } else if let i = try? c.decodeIfPresent(Int.self, forKey: .id) {
+            id = Int64(i)
+        } else {
+            id = nil
+        }
         skipAd = try c.decodeIfPresent(Bool.self, forKey: .skipAd)
         if let d = try? c.decodeIfPresent(Int.self, forKey: .duration) {
             duration = d

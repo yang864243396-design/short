@@ -90,6 +90,14 @@ final class PlayerViewModel: ObservableObject {
         return !shouldSkipCoinUnlockDialogForAdSkip()
     }
 
+    /// 与 Android `canSkipLockedGate` 一致：无需片头 / 二选一（免费、已永久解、同集 10 分钟窗内）。
+    private func canSkipLockedGate(_ ep: Episode) -> Bool {
+        if ep.isFree ?? true { return true }
+        if ep.coinUnlocked ?? false { return true }
+        if isTemporarilyUnlocked(ep.id) { return true }
+        return false
+    }
+
     func needsUnlockGate() -> Bool {
         requiresCoinOrAdChoice()
     }
@@ -256,8 +264,7 @@ final class PlayerViewModel: ObservableObject {
         /// 已通过付费墙：`player` 已清空，`playMainStream` 较晚才把 `streamPreparing` 置为 true，中间会 `await getAdVideoPayload`，
         /// 若没有此处则会出现「仅黑屏、无加载」——金币解锁后即为此路径。
         streamPreparing = true
-        // 对齐 Android `loadAndPlayAd()`：已登录且本集仍在 `EpisodeAdTempUnlock` 窗口内则直接起正片，不请求 `ad/video`。
-        if let t = authToken, !t.isEmpty, isTemporarilyUnlocked(ep.id) {
+        if canSkipLockedGate(ep) {
             await playMainStream()
             return
         }
@@ -284,7 +291,7 @@ final class PlayerViewModel: ObservableObject {
             } else if let vu = PlaybackURL.adVideoAbsoluteURL(p.videoUrl) {
                 // 片长时间约 dur 秒，超时取 2~3 倍作为兜底，与常见贴片长度同量级
                 let cap = min(120, max(30, dur * 3))
-                await runVideoAd(url: vu, durationSeconds: dur, maxWaitSeconds: cap)
+                await runVideoAd(url: vu, adMaterialId: p.id, durationSeconds: dur, maxWaitSeconds: cap)
             } else {
                 if grantsTemporaryUnlock, shouldPaywall(ep) {
                     streamPreparing = false
@@ -337,7 +344,7 @@ final class PlayerViewModel: ObservableObject {
         // 图片广告与 Android 一致：倒计时结束后变为“关闭广告”，由用户关闭后获得本集临时权限。
     }
 
-    private func runVideoAd(url: URL, durationSeconds: Int, maxWaitSeconds: Int) async {
+    private func runVideoAd(url: URL, adMaterialId: Int64?, durationSeconds: Int, maxWaitSeconds: Int) async {
         await precacheCurrentEpisodeWhileAdPlaying()
         adTimeoutTask?.cancel()
         adTimeoutTask = nil
@@ -350,20 +357,30 @@ final class PlayerViewModel: ObservableObject {
         adPlayer?.pause()
         adPlayer = nil
         if let o = adEndObserver { NotificationCenter.default.removeObserver(o) }
+        adEndObserver = nil
         adItemStatusCancellable?.cancel()
         adItemStatusCancellable = nil
-        let opts: [String: Any] = [
-            AVURLAssetAllowsExpensiveNetworkAccessKey: true,
-            AVURLAssetAllowsCellularAccessKey: true,
-        ]
-        let asset = AVURLAsset(url: url, options: opts)
+
+        let asset: AVURLAsset
+        if let aid = adMaterialId, aid > 0 {
+            asset = await VideoCacheManager.shared.playbackAVURLAssetForAd(remoteURL: url, headers: [:], adVideoId: aid)
+        } else {
+            let opts: [String: Any] = [
+                AVURLAssetAllowsExpensiveNetworkAccessKey: true,
+                AVURLAssetAllowsCellularAccessKey: true,
+            ]
+            asset = AVURLAsset(url: url, options: opts)
+        }
         let item = AVPlayerItem(asset: asset)
-        adItemStatusCancellable = item.publisher(for: \.status)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] status in
-                guard let self, status == .failed else { return }
-                Task { @MainActor in await self.adPlaybackFailedFallbackToMain() }
-            }
+        await waitForAdPlayerItemReadyOrTerminal(item, timeoutSeconds: 25)
+        if item.status == .failed {
+            await adPlaybackFailedFallbackToMain()
+            return
+        }
+        if item.status != .readyToPlay {
+            await adPlaybackFailedFallbackToMain()
+            return
+        }
         let pl = AVPlayer(playerItem: item)
         adPlayer = pl
         pl.play()
@@ -392,6 +409,16 @@ final class PlayerViewModel: ObservableObject {
             Task { @MainActor in
                 await self?.onAdVideoEnded()
             }
+        }
+    }
+
+    /// 等 `AVPlayerItem` 离开 `unknown`（与 Android prepare 后再 play 对齐）；超时则交由调用方判失败。
+    private func waitForAdPlayerItemReadyOrTerminal(_ item: AVPlayerItem, timeoutSeconds: Double) async {
+        if item.status != .unknown { return }
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while item.status == .unknown, Date() < deadline {
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: 48_000_000)
         }
     }
 
@@ -471,7 +498,6 @@ final class PlayerViewModel: ObservableObject {
 
     private func playMainStream() async {
         isWatchAdUnlockFlowActive = false
-        if Task.isCancelled { return }
         clearAd()
         guard let ep = current else { return }
         let u: URL?
@@ -481,8 +507,9 @@ final class PlayerViewModel: ObservableObject {
             u = PlaybackURL.url(for: ep)
         }
         guard let u else {
-            /// 由 `runAdThenMain` 等路径先置 `streamPreparing = true` 时：无可用拉流 URL 须清掉加载态。
+            /// 贴片结束后若业务数据未带出拉流字段，无法拼 URL 会导致「关贴后不播」且无提示。
             streamPreparing = false
+            loadError = "无法获取播放地址，请稍后重试"
             return
         }
         var headers: [String: String] = [:]
@@ -608,6 +635,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func grantTemporaryUnlock(_ episodeId: Int64) {
         temporaryUnlockExpiry[episodeId] = Date().addingTimeInterval(10 * 60)
+        objectWillChange.send()
     }
 
     private func syncCountsFromCurrent() {

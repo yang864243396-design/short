@@ -12,6 +12,10 @@ actor AdPreloadManager {
         guard let payload = await APIClient.shared.getAdVideoPayload(episodeId: nil, token: nil) else { return }
         let mediaType = (payload.mediaType ?? "video").lowercased()
         guard mediaType != "image", let url = PlaybackURL.adVideoAbsoluteURL(payload.videoUrl) else { return }
-        await VideoCacheManager.shared.precache(url)
+        if let aid = payload.id, aid > 0 {
+            await VideoCacheManager.shared.precache(url, headers: [:], episodeId: nil, adVideoId: aid)
+        } else {
+            await VideoCacheManager.shared.precache(url)
+        }
     }
 }
