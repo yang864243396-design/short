@@ -74,11 +74,21 @@ final class PlayerViewModel: ObservableObject {
         return !free && !unlocked && !isTemporarilyUnlocked(ep.id)
     }
 
-    func needsUnlockGate() -> Bool {
+    /// 对齐 Android `PlayerActivity.playEpisode`：`needCoinOrAdDialog = 已登录 && unlockCoins>0 && !coinUnlocked` 才弹「金币/看广告」；
+    /// 未登录不弹二选一，直接走片头 `loadAndPlayAd`。
+    private func requiresCoinOrAdChoice() -> Bool {
         guard let ep = current else { return false }
-        guard shouldPaywall(ep) else { return false }
-        /// 对齐 Android `AdSkipCache.shouldSkipCoinUnlockDialogForAdSkip`：有可用免广则不应挡在解锁蒙层后。
+        guard let t = authToken, !t.isEmpty else { return false }
+        guard (ep.unlockCoins ?? 0) > 0 else { return false }
+        guard !(ep.isFree ?? true) else { return false }
+        guard !(ep.coinUnlocked ?? false) else { return false }
+        guard !isTemporarilyUnlocked(ep.id) else { return false }
+        /// 有免广次数/权益可走片头抵扣时，不挡二选一（与 Android `shouldSkipCoinUnlockDialogForAdSkip` + 直走 `loadAndPlayAd`）。
         return !shouldSkipCoinUnlockDialogForAdSkip()
+    }
+
+    func needsUnlockGate() -> Bool {
+        requiresCoinOrAdChoice()
     }
 
     func load() async {
@@ -226,8 +236,8 @@ final class PlayerViewModel: ObservableObject {
         player = nil
         isPlaying = false
         guard let ep = current else { return }
-        /// 对齐 Android：付费集且未选「看广告解锁」时，若持有免广权益则仍走片头接口（服务端扣次/免广），不得提前 return。
-        if shouldPaywall(ep), !grantsTemporaryUnlock, !shouldSkipCoinUnlockDialogForAdSkip() { return }
+        /// 对齐 Android：仅当应弹「金币/看广告」且用户尚未点「观看广告」流水线时阻塞；未登录/免广抵扣路径不 return。
+        if requiresCoinOrAdChoice(), !grantsTemporaryUnlock { return }
         if Task.isCancelled { return }
         /// 已通过付费墙：`player` 已清空，`playMainStream` 较晚才把 `streamPreparing` 置为 true，中间会 `await getAdVideoPayload`，
         /// 若没有此处则会出现「仅黑屏、无加载」——金币解锁后即为此路径。
@@ -237,7 +247,8 @@ final class PlayerViewModel: ObservableObject {
             await playMainStream()
             return
         }
-        let eid: Int64? = (authToken != nil && !authToken!.isEmpty) ? ep.id : nil
+        /// 对齐 Android `fetchAndPlayAd`：`episode_id` 带当前分集 id（未登录也同样传，便于服务端片头与统计）。
+        let eid: Int64? = ep.id > 0 ? ep.id : nil
         if let p = await APIClient.shared.getAdVideoPayload(episodeId: eid, token: authToken) {
             if p.skipAd == true {
                 if grantsTemporaryUnlock || shouldPaywall(ep) {

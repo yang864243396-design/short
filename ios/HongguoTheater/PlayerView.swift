@@ -245,38 +245,21 @@ struct PlayerView: View {
                     controlsVisible = true
                 }
 
-                /// 独立于竖滑手势层：避免父级 `DragGesture` / `contentShape` 吞掉按钮点击。
+                /// 与 Android `HgDialog.showConfirm` + `dialog_hg_sheet` 一致：主按钮在上（支付金币）、次按钮在下（观看广告），深底圆角面板。
                 if unlockGateOverlayVisible {
-                    Color.black.opacity(0.72)
+                    Color.black.opacity(0.55)
                         .ignoresSafeArea()
                         .allowsHitTesting(true)
                         .zIndex(50)
-                    VStack(spacing: 14) {
-                        Text("解锁观看")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        if let c = vm.current?.unlockCoins {
-                            Text("本集为付费内容。支付 \(c) 金币可永久解锁并免广告观看；或观看广告获得 10 分钟内观看权限。")
-                                .font(.subheadline)
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(AppTheme.onSurfaceVariant)
-                        }
-                        Button("支付 \(vm.current?.unlockCoins ?? 0) 金币") {
+                    PlayerCoinOrAdUnlockPanel(
+                        unlockCoins: vm.current?.unlockCoins ?? 0,
+                        onPayCoins: {
                             Task { await vm.unlock() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppTheme.primary)
-                        Button("观看广告") {
+                        },
+                        onWatchAd: {
                             vm.watchAdForTemporaryUnlock()
                         }
-                        .buttonStyle(.bordered)
-                        .tint(AppTheme.onSurface)
-                    }
-                    .padding()
-                    .frame(maxWidth: 320)
-                    .background(AppTheme.surface.opacity(0.96))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .padding()
+                    )
                     .zIndex(51)
                 }
             }
@@ -751,6 +734,67 @@ struct PlayerView: View {
             return String(format: "%.1fw", Double(count) / 10_000.0)
         }
         return "\(count)"
+    }
+}
+
+// MARK: - 解锁二选一（对齐 Android `dialog_hg_sheet` + HgDialog.showConfirm 主上/次下）
+
+private struct PlayerCoinOrAdUnlockPanel: View {
+    let unlockCoins: Int
+    let onPayCoins: () -> Void
+    let onWatchAd: () -> Void
+
+    private var message: String {
+        "本集为付费内容。支付 \(unlockCoins) 金币可永久解锁并免广告观看；或观看广告获得 10 分钟内观看权限。"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("解锁观看")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(AppTheme.onSurface)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+            Text(message)
+                .font(.system(size: 15))
+                .foregroundStyle(Color(red: 0.631, green: 0.631, blue: 0.631))
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 14)
+            Button {
+                onPayCoins()
+            } label: {
+                Text("支付 \(unlockCoins) 金币")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .padding(.horizontal, 16)
+                    .background(Color(red: 1, green: 0.549, blue: 0.451))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 24)
+            Button {
+                onWatchAd()
+            } label: {
+                Text("观看广告")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(red: 0.922, green: 0.922, blue: 0.961))
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .padding(.horizontal, 16)
+                    .background(Color(red: 0.173, green: 0.173, blue: 0.18))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 12)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 28)
+        .padding(.bottom, 24)
+        .background(Color(red: 0.11, green: 0.11, blue: 0.118))
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(.horizontal, 24)
     }
 }
 
