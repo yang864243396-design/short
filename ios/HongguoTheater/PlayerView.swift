@@ -49,9 +49,15 @@ struct PlayerView: View {
         vm.needsUnlockGate()
     }
 
+    /// 未付费且不是在播贴片时，锁住主界面操作（贴片/加载中仍可点贴片区；与 Android 对齐）。
+    private var paywallLocksMainChrome: Bool {
+        needsUnlock && !vm.showAd
+    }
+
     /// 对齐 Android：`loadAndPlayAd` 开始后应关掉二选一浮层；`streamPreparing` 已为 true 时仍显示蒙层会把加载态/贴片挡死，看起来像「按钮无反应」。
+    /// 用户已点「观看广告」后，在贴片未展示前也需隐藏浮层并将 `tap`/`doubleTap` 与蒙层对齐（旧逻辑仅用 `needsUnlock` 会在贴片期间误挡 `adPlayer` 点击）。
     private var unlockGateOverlayVisible: Bool {
-        needsUnlock && !vm.showAd && !vm.streamPreparing
+        needsUnlock && !vm.showAd && !vm.streamPreparing && !vm.isWatchAdUnlockFlowActive
     }
 
     var body: some View {
@@ -229,12 +235,12 @@ struct PlayerView: View {
                 .simultaneousGesture(episodeSwipeGesture(pageHeight: pageH))
                 .simultaneousGesture(
                     SpatialTapGesture(count: 2).onEnded { value in
-                        guard !needsUnlock else { return }
+                        guard !paywallLocksMainChrome else { return }
                         Task { await likeFromDoubleTap(at: value.location) }
                     }
                 )
                 .onTapGesture {
-                    guard !needsUnlock else { return }
+                    guard !paywallLocksMainChrome else { return }
                     if vm.showAd {
                         if let ap = vm.adPlayer {
                             if ap.rate > 0 { ap.pause() } else { ap.play() }
@@ -414,7 +420,7 @@ struct PlayerView: View {
         DragGesture(minimumDistance: 16)
             .onChanged { value in
                 guard !episodeSlideAnimating else { return }
-                guard !needsUnlock, !vm.showAd else { return }
+                guard !paywallLocksMainChrome, !vm.showAd else { return }
                 let t = value.translation
                 if episodeSlideVerticalLocked == nil {
                     guard hypot(t.width, t.height) >= 14 else { return }
@@ -714,7 +720,7 @@ struct PlayerView: View {
     }
 
     private func likeFromDoubleTap(at point: CGPoint) async {
-        guard session.isLoggedIn, !vm.showAd, !needsUnlock, vm.current != nil else { return }
+        guard session.isLoggedIn, !vm.showAd, !paywallLocksMainChrome, vm.current != nil else { return }
         if vm.liked {
             addLikeBurst(at: point)
             return

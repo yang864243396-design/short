@@ -31,6 +31,9 @@ final class PlayerViewModel: ObservableObject {
     /// 正片资源解析/缓存命中阶段（用于加载态 UI）
     @Published var streamPreparing: Bool = false
 
+    /// 用户已点「观看广告」且流水线尚未进入正片起播：用于避免 `load()` 重启管线取消贴片，并与解锁蒙层显示条件对齐。
+    @Published private(set) var isWatchAdUnlockFlowActive: Bool = false
+
     /// 与 Android `AdSkipCache` 快照对齐：用于「有免广次数/权益在期是否免弹解锁二选一」。
     @Published private(set) var adSkipStatusSnapshot: AdSkipStatus?
 
@@ -109,7 +112,9 @@ final class PlayerViewModel: ObservableObject {
             if self.current == nil { loadError = "暂无可播分集" }
             syncCountsFromCurrent()
             await refreshAdSkipSnapshotIfLoggedIn()
-            startPlaybackPipeline()
+            if !isWatchAdUnlockFlowActive {
+                startPlaybackPipeline()
+            }
         } catch {
             loadError = error.localizedDescription
             adSkipStatusSnapshot = nil
@@ -196,6 +201,7 @@ final class PlayerViewModel: ObservableObject {
 
     func watchAdForTemporaryUnlock() {
         guard current != nil else { return }
+        isWatchAdUnlockFlowActive = true
         playTask?.cancel()
         playTask = Task { @MainActor in
             await self.runAdThenMain(grantsTemporaryUnlock: true)
@@ -223,6 +229,8 @@ final class PlayerViewModel: ObservableObject {
 
     // MARK: - 广告 + 正片
     private func startPlaybackPipeline() {
+        /// 任一非「观看广告」任务都会替换管线，避免上一轮 `watchAdForTemporaryUnlock` 遗留 `isWatchAdUnlockFlowActive`。
+        isWatchAdUnlockFlowActive = false
         playTask?.cancel()
         playTask = Task { @MainActor in
             await self.runAdThenMain(grantsTemporaryUnlock: false)
@@ -235,10 +243,16 @@ final class PlayerViewModel: ObservableObject {
         clearTimeObserver()
         player = nil
         isPlaying = false
-        guard let ep = current else { return }
+        guard let ep = current else {
+            isWatchAdUnlockFlowActive = false
+            return
+        }
         /// 对齐 Android：仅当应弹「金币/看广告」且用户尚未点「观看广告」流水线时阻塞；未登录/免广抵扣路径不 return。
         if requiresCoinOrAdChoice(), !grantsTemporaryUnlock { return }
-        if Task.isCancelled { return }
+        if Task.isCancelled {
+            isWatchAdUnlockFlowActive = false
+            return
+        }
         /// 已通过付费墙：`player` 已清空，`playMainStream` 较晚才把 `streamPreparing` 置为 true，中间会 `await getAdVideoPayload`，
         /// 若没有此处则会出现「仅黑屏、无加载」——金币解锁后即为此路径。
         streamPreparing = true
@@ -261,6 +275,7 @@ final class PlayerViewModel: ObservableObject {
             let mt = (p.mediaType ?? "video").lowercased()
             if Task.isCancelled {
                 streamPreparing = false
+                isWatchAdUnlockFlowActive = false
                 return
             }
             adGrantsTemporaryUnlock = grantsTemporaryUnlock || shouldPaywall(ep)
@@ -271,9 +286,21 @@ final class PlayerViewModel: ObservableObject {
                 let cap = min(120, max(30, dur * 3))
                 await runVideoAd(url: vu, durationSeconds: dur, maxWaitSeconds: cap)
             } else {
+                if grantsTemporaryUnlock, shouldPaywall(ep) {
+                    streamPreparing = false
+                    isWatchAdUnlockFlowActive = false
+                    loadError = "暂无广告，请稍后重试"
+                    return
+                }
                 await playMainStream()
             }
         } else {
+            if grantsTemporaryUnlock, shouldPaywall(ep) {
+                streamPreparing = false
+                isWatchAdUnlockFlowActive = false
+                loadError = "暂无广告，请稍后重试"
+                return
+            }
             await playMainStream()
         }
     }
@@ -387,6 +414,12 @@ final class PlayerViewModel: ObservableObject {
         adCanClose = false
         adGrantsTemporaryUnlock = false
         showAd = false
+        if let ep = current, shouldPaywall(ep) {
+            isWatchAdUnlockFlowActive = false
+            streamPreparing = false
+            loadError = "广告加载失败，请重试"
+            return
+        }
         await playMainStream()
     }
 
@@ -427,6 +460,7 @@ final class PlayerViewModel: ObservableObject {
 
     func abandonAdUnlock() {
         confirmAbandonAd = false
+        isWatchAdUnlockFlowActive = false
         clearAd()
         Task { await VideoCacheManager.shared.cancelPrecache() }
         clearTimeObserver()
@@ -436,6 +470,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func playMainStream() async {
+        isWatchAdUnlockFlowActive = false
         if Task.isCancelled { return }
         clearAd()
         guard let ep = current else { return }
