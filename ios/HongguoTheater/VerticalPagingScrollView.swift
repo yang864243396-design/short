@@ -22,7 +22,6 @@ struct VerticalPagingScrollView: UIViewRepresentable {
         s.alwaysBounceVertical = false
         s.delegate = context.coordinator
         s.backgroundColor = .clear
-        context.coordinator.scrollView = s
         return s
     }
 
@@ -34,7 +33,7 @@ struct VerticalPagingScrollView: UIViewRepresentable {
         context.coordinator.pageHeight = pageHeight
         context.coordinator.rebuildIfNeeded(scrollView: scrollView)
         context.coordinator.refreshHostedPages(scrollView: scrollView)
-        context.coordinator.syncOffsetIfIndexChangedExternally()
+        context.coordinator.syncOffsetIfIndexChangedExternally(scrollView)
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
@@ -43,7 +42,6 @@ struct VerticalPagingScrollView: UIViewRepresentable {
         var count: Int = 0
         var pageWidth: CGFloat = 0
         var pageHeight: CGFloat = 0
-        weak var scrollView: UIScrollView?
         private var hosts: [UIHostingController<AnyView>] = []
         private var lastCount: Int = -1
         private var lastW: CGFloat = 0
@@ -105,8 +103,12 @@ struct VerticalPagingScrollView: UIViewRepresentable {
             }
         }
 
-        func syncOffsetIfIndexChangedExternally() {
-            guard let s = scrollView, lastH > 0, count > 0, indexBinding != nil else { return }
+        /// 仅在「非用户滑动过程」中把 `contentOffset` 对齐到绑定索引（例如代码里改 `currentIndex`）。
+        /// 滑动/减速期间绝不能调用：父视图因进度条等 @State 高频刷新时也会走 `updateUIView`，
+        /// 若此时强行对齐旧索引，会把用户正在浏览的下一页拽回上一页，导致 overlays 跟着滑走但底层单路视频仍停在第一条。
+        func syncOffsetIfIndexChangedExternally(_ s: UIScrollView) {
+            guard lastH > 0, count > 0, indexBinding != nil else { return }
+            if s.isDragging || s.isDecelerating { return }
             let maxI = count - 1
             let target = min(max(0, indexBinding.wrappedValue), maxI)
             let y = CGFloat(target) * lastH
@@ -117,16 +119,22 @@ struct VerticalPagingScrollView: UIViewRepresentable {
             }
         }
 
+        /// 抖音式：随可见页中心变化立刻更新索引，使单路 `AVPlayer` 与当前页 overlay 同步（不只等减速结束）。
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            updateIndexFromOffset(scrollView, allowDuringUserScroll: true)
+        }
+
         func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-            updateIndex(from: scrollView)
+            updateIndexFromOffset(scrollView, allowDuringUserScroll: false)
         }
 
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            if !decelerate { updateIndex(from: scrollView) }
+            if !decelerate { updateIndexFromOffset(scrollView, allowDuringUserScroll: false) }
         }
 
-        private func updateIndex(from scrollView: UIScrollView) {
-            guard !isSyncingFromCode, lastH > 0, indexBinding != nil else { return }
+        private func updateIndexFromOffset(_ scrollView: UIScrollView, allowDuringUserScroll: Bool) {
+            guard !isSyncingFromCode, lastH > 0, indexBinding != nil, count > 0 else { return }
+            if !allowDuringUserScroll, scrollView.isDragging || scrollView.isDecelerating { return }
             let p = Int(round(scrollView.contentOffset.y / lastH))
             let clamped = min(max(0, p), max(0, count - 1))
             if indexBinding.wrappedValue != clamped {
