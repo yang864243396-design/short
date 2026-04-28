@@ -113,6 +113,8 @@ struct FeedView: View {
                 if !initialLoaded {
                     initialLoaded = true
                     Task { await loadFeed(reset: true) }
+                } else if player == nil, !episodes.isEmpty {
+                    rebuildPlayerForCurrent()
                 } else {
                     player?.play()
                 }
@@ -328,7 +330,10 @@ struct FeedView: View {
         playbackProgress = 0
         guard currentIndex < episodes.count else { return }
         let ep = episodes[currentIndex]
-        guard let u = PlaybackURL.url(for: ep) else { return }
+        guard let u = PlaybackURL.url(for: ep) else {
+            playbackError = "该条没有可播放地址"
+            return
+        }
         var headers: [String: String] = [:]
         if session.isLoggedIn, !session.token.isEmpty {
             headers["Authorization"] = "Bearer \(session.token)"
@@ -347,7 +352,7 @@ struct FeedView: View {
             player?.pause()
             player = AVPlayer(playerItem: item)
             installTimeObserver(for: item)
-            if parentTab == .feed, scenePhase == .active {
+            if parentTab == .feed {
                 player?.play()
             }
             await prefetchFeedNextOnly(index: currentIndex, headers: headers)
@@ -502,11 +507,12 @@ struct FeedView: View {
                 if indexWasInvalid {
                     currentIndex = max(0, episodes.count - 1)
                 }
-                // 加载更多时不应重建当前播放：会清空 player 且抬高 token，易导致异步任务全部被 guard 丢弃而无法自动播放。
+                // 必须先对齐「首页跳转」目标条再拉流；若先 rebuild 再 tryScroll，异步完成时 currentIndex 已变，guard 会丢弃任务导致刷剧无画面。
+                tryScrollAfterDrama()
+                // 加载更多时不应重建当前播放：会清空 player 且抬高 token。
                 if !append || indexWasInvalid {
                     rebuildPlayerForCurrent()
                 }
-                tryScrollAfterDrama()
             }
         } catch {
             if append, !episodes.isEmpty {
