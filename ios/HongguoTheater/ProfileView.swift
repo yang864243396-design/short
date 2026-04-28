@@ -19,6 +19,7 @@ struct ProfileView: View {
     @State private var adSkipInsufficientMessage: String?
     @State private var hgDialog: HGDialog?
     @State private var selectedAdSkipConfigID: Int64?
+    @State private var fullScreenPlayer: PlayerEntry?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -66,11 +67,14 @@ struct ProfileView: View {
                     onSecondary: { adSkipInsufficientMessage = nil }
                 )
             }
-            .navigationDestination(for: PlayerEntry.self) { e in
-                PlayerView(dramaId: e.dramaId, episodeId: e.episodeId)
-            }
             .navigationDestination(for: WalletDest.self) { _ in
                 WalletView()
+            }
+            .fullScreenCover(item: $fullScreenPlayer) { entry in
+                NavigationStack {
+                    PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
+                        .environmentObject(session)
+                }
             }
             .hgDialog($hgDialog)
         }
@@ -549,7 +553,7 @@ struct ProfileView: View {
     private var listHistory: some View {
         ForEach(history, id: \.id) { h in
             if let d = h.drama {
-                Button { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) } label: {
+                Button { fullScreenPlayer = PlayerEntry(dramaId: d.id, episodeId: nil) } label: {
                     profileListRow(
                         title: d.title ?? "",
                         subtitle: h.isFinished ? "已看完" : String(format: "看到 %02d集", h.lastEpisode),
@@ -563,7 +567,7 @@ struct ProfileView: View {
 
     private var listCollection: some View {
         ForEach(collections) { d in
-            Button { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) } label: {
+            Button { fullScreenPlayer = PlayerEntry(dramaId: d.id, episodeId: nil) } label: {
                 profileListRow(
                     title: d.title ?? "",
                     subtitle: "\(d.category ?? "") · \(d.statusText)",
@@ -576,7 +580,7 @@ struct ProfileView: View {
 
     private var listLikes: some View {
         ForEach(likes) { e in
-            Button { path.append(PlayerEntry(dramaId: e.dramaId, episodeId: e.id)) } label: {
+            Button { fullScreenPlayer = PlayerEntry(dramaId: e.dramaId, episodeId: e.id) } label: {
                 profileListRow(
                     title: e.drama?.title ?? e.title ?? "短剧",
                     subtitle: "第\(e.episodeNumber)集 · \(Self.formatCount(e.likeCount ?? 0))赞",

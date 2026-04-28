@@ -31,6 +31,7 @@
 		B00000000000000000000017 /* HGDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000019 /* HGDialog.swift */; };
 		B00000000000000000000018 /* VideoCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001A /* VideoCacheManager.swift */; };
 		B00000000000000000000019 /* AdPreloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001B /* AdPreloadManager.swift */; };
+		B0000000000000000000001A /* RankingBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000001C /* RankingBadgeView.swift */; };
 		B00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000016 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -59,6 +60,7 @@
 		F00000000000000000000019 /* HGDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HGDialog.swift; sourceTree = "<group>"; };
 		F0000000000000000000001A /* VideoCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCacheManager.swift; sourceTree = "<group>"; };
 		F0000000000000000000001B /* AdPreloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdPreloadManager.swift; sourceTree = "<group>"; };
+		F0000000000000000000001C /* RankingBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankingBadgeView.swift; sourceTree = "<group>"; };
 		F00000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F00000000000000000000018 /* HongguoTheater.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HongguoTheater.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -105,6 +107,7 @@
 				F0000000000000000000000F /* PlayerViewModel.swift */,
 				F00000000000000000000010 /* ProfileView.swift */,
 				F00000000000000000000011 /* RankingView.swift */,
+				F0000000000000000000001C /* RankingBadgeView.swift */,
 				F00000000000000000000012 /* SearchView.swift */,
 				F00000000000000000000013 /* SessionStore.swift */,
 				F00000000000000000000014 /* VerticalPagingScrollView.swift */,
@@ -214,6 +217,7 @@
 				B0000000000000000000000F /* PlayerViewModel.swift in Sources */,
 				B00000000000000000000010 /* ProfileView.swift in Sources */,
 				B00000000000000000000011 /* RankingView.swift in Sources */,
+				B0000000000000000000001A /* RankingBadgeView.swift in Sources */,
 				B00000000000000000000012 /* SearchView.swift in Sources */,
 				B00000000000000000000013 /* SessionStore.swift in Sources */,
 				B00000000000000000000014 /* VerticalPagingScrollView.swift in Sources */,

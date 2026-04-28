@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var dramaRequestID = 0
 
     @State private var path = NavigationPath()
+    @State private var fullScreenPlayer: PlayerEntry?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -43,14 +44,17 @@ struct HomeView: View {
             }
             .background(AppTheme.background)
             .navigationBarHidden(true)
-            .navigationDestination(for: PlayerEntry.self) { entry in
-                PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
-            }
             .navigationDestination(for: SearchNav.self) { _ in
                 SearchView()
             }
             .navigationDestination(for: RankingNav.self) { r in
                 RankingView(initialType: r.type)
+            }
+        }
+        .fullScreenCover(item: $fullScreenPlayer) { entry in
+            NavigationStack {
+                PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
+                    .environmentObject(session)
             }
         }
         .tint(AppTheme.onSurface)
@@ -90,7 +94,7 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture {
                         if b.isDramaLink, b.dramaId != nil, b.dramaId! > 0 {
-                            path.append(PlayerEntry(dramaId: b.dramaId!, episodeId: nil))
+                            fullScreenPlayer = PlayerEntry(dramaId: b.dramaId!, episodeId: nil)
                         }
                     }
                     .tag(idx)
@@ -138,7 +142,7 @@ struct HomeView: View {
                         ForEach(items) { it in
                             if let d = it.drama {
                                 rankingCoverCard(rank: it.rank, drama: d)
-                                    .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
+                                    .onTapGesture { fullScreenPlayer = PlayerEntry(dramaId: d.id, episodeId: nil) }
                             }
                         }
                     }
@@ -202,7 +206,7 @@ struct HomeView: View {
         LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(dramList) { d in
                 dramaMiniRow(d)
-                    .onTapGesture { path.append(PlayerEntry(dramaId: d.id, episodeId: nil)) }
+                    .onTapGesture { fullScreenPlayer = PlayerEntry(dramaId: d.id, episodeId: nil) }
             }
         }
         .padding(.horizontal)
@@ -346,9 +350,11 @@ struct HomeView: View {
     }
 }
 
-struct PlayerEntry: Hashable {
+struct PlayerEntry: Hashable, Identifiable {
     let dramaId: Int64
     let episodeId: Int64?
+
+    var id: String { "\(dramaId)-\(episodeId ?? 0)" }
 }
 
 private struct SearchNav: Hashable {}

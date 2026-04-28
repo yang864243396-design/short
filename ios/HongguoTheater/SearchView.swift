@@ -8,6 +8,7 @@ struct SearchView: View {
     @State private var hotRanks: [RankItem] = []
     @State private var results: [Drama] = []
     @State private var loading = false
+    @State private var fullScreenPlayer: PlayerEntry?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +29,12 @@ struct SearchView: View {
         }
         .navigationBarBackButtonHidden(true)
         .navigationBarHidden(true)
+        .fullScreenCover(item: $fullScreenPlayer) { entry in
+            NavigationStack {
+                PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
+                    .environmentObject(session)
+            }
+        }
     }
 
     private var searchHeader: some View {
@@ -99,7 +106,9 @@ struct SearchView: View {
                         .foregroundStyle(AppTheme.onSurface)
                     ForEach(Array(hotRanks.prefix(10))) { item in
                         if let d = item.drama {
-                            NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
+                            Button {
+                                fullScreenPlayer = PlayerEntry(dramaId: d.id, episodeId: nil)
+                            } label: {
                                 HStack(spacing: 10) {
                                     Text("\(item.rank)")
                                         .font(.headline)
@@ -122,9 +131,12 @@ struct SearchView: View {
     private var resultsPanel: some View {
         List {
             ForEach(results) { d in
-                NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
+                Button {
+                    fullScreenPlayer = PlayerEntry(dramaId: d.id, episodeId: nil)
+                } label: {
                     dramaRow(d)
                 }
+                .buttonStyle(.plain)
                 .listRowBackground(AppTheme.background)
             }
         }

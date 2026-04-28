@@ -8,6 +8,7 @@ struct RankingView: View {
     @State private var items: [RankItem] = []
     @State private var loading = false
     @State private var requestID = 0
+    @State private var fullScreenPlayer: PlayerEntry?
 
     private let types: [(String, String)] = [
         ("hot", "热播榜"),
@@ -35,7 +36,9 @@ struct RankingView: View {
                     LazyVStack(spacing: 8) {
                     ForEach(items) { it in
                         if let d = it.drama {
-                            NavigationLink(value: PlayerEntry(dramaId: d.id, episodeId: nil)) {
+                            Button {
+                                fullScreenPlayer = PlayerEntry(dramaId: d.id, episodeId: nil)
+                            } label: {
                                 rankingRow(it, drama: d)
                             }
                             .buttonStyle(.plain)
@@ -51,6 +54,12 @@ struct RankingView: View {
         .task {
             self.type = initialType
             await load(type, force: true)
+        }
+        .fullScreenCover(item: $fullScreenPlayer) { entry in
+            NavigationStack {
+                PlayerView(dramaId: entry.dramaId, episodeId: entry.episodeId)
+                    .environmentObject(session)
+            }
         }
     }
 

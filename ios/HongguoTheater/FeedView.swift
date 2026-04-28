@@ -28,6 +28,7 @@ struct FeedView: View {
     @State private var playbackError: String?
     @State private var playbackProgress: Double = 0
     @State private var timeObserver: Any?
+    @State private var rankingSheet: RankingSheetEntry?
 
     private static let pageSize = 10
 
@@ -155,6 +156,12 @@ struct FeedView: View {
                     .environmentObject(session)
             }
         }
+        .fullScreenCover(item: $rankingSheet) { entry in
+            NavigationStack {
+                RankingView(initialType: entry.type)
+                    .environmentObject(session)
+            }
+        }
         .hgDialog(Binding(
             get: {
                 playbackError.map {
@@ -175,6 +182,11 @@ struct FeedView: View {
                 .frame(width: size.width, height: size.height)
             HStack(alignment: .bottom, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let badge = ep.drama?.preferredRankingBadge {
+                        RankingBadgeView(info: badge) {
+                            rankingSheet = RankingSheetEntry(type: badge.type)
+                        }
+                    }
                     Text(dramaTitle)
                         .font(.headline)
                         .foregroundStyle(.white)
@@ -565,4 +577,9 @@ private struct FeedPlayerEntry: Identifiable {
     let positionSeconds: Double
 
     var id: String { "\(dramaId)-\(episodeId ?? 0)" }
+}
+
+private struct RankingSheetEntry: Identifiable {
+    let type: String
+    var id: String { type }
 }

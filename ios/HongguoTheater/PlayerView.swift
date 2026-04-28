@@ -13,6 +13,7 @@ struct PlayerView: View {
     @State private var showWallet = false
     @State private var showLogin = false
     @State private var hgDialog: HGDialog?
+    @State private var rankingSheet: PlayerRankingSheetEntry?
     @State private var controlsVisible = true
     @State private var dragProgress: Double?
     private let onRequestNextDramaFromFeed: (() -> Void)?
@@ -154,6 +155,11 @@ struct PlayerView: View {
 
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
+                            if let badge = (vm.drama ?? vm.current?.drama)?.preferredRankingBadge {
+                                RankingBadgeView(info: badge) {
+                                    rankingSheet = PlayerRankingSheetEntry(type: badge.type)
+                                }
+                            }
                             Text(vm.drama?.title ?? vm.current?.drama?.title ?? "")
                                 .font(.headline)
                                 .foregroundStyle(.white)
@@ -402,6 +408,12 @@ struct PlayerView: View {
             .presentationDetents([.height(400)])
             .presentationDragIndicator(.hidden)
         }
+        .sheet(item: $rankingSheet) { entry in
+            NavigationStack {
+                RankingView(initialType: entry.type)
+                    .environmentObject(session)
+            }
+        }
         .hgDialog($hgDialog)
     }
 
@@ -549,4 +561,9 @@ struct PlayerView: View {
         }
         return "\(count)"
     }
+}
+
+private struct PlayerRankingSheetEntry: Identifiable {
+    let type: String
+    var id: String { type }
 }
