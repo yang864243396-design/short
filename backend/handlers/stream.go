@@ -91,11 +91,52 @@ func isPathSafe(videoPath string) bool {
 		strings.HasPrefix(videoPath, "/uploads/")
 }
 
+// serveStreamUploadFile 将 uploads 下已校验路径映射为本地磁盘路径并回传文件（分集与广告素材共用）。
+func serveStreamUploadFile(c *gin.Context, diskRelativePath string) {
+	if !isPathSafe(diskRelativePath) {
+		log.Printf("[WARN] StreamVideo: suspicious path blocked: %s", diskRelativePath)
+		c.Status(http.StatusForbidden)
+		return
+	}
+
+	filePath := diskRelativePath
+	if !strings.HasPrefix(filePath, ".") && !strings.HasPrefix(filePath, "/") {
+		filePath = "./" + filePath
+	} else if strings.HasPrefix(filePath, "/") {
+		filePath = "." + filePath
+	}
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "video file not found"})
+		return
+	}
+
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.File(filePath)
+}
+
 func StreamVideo(c *gin.Context) {
 	episodeID := c.Param("episodeId")
 	token := c.Query("token")
 	expireStr := c.Query("expire")
 	rawPath := c.Query("p")
+
+	// 带 HMAC：路径 id 为「分集 ID」或「广告素材 ad_videos.id」；
+	// GetAdVideo 对视频广告使用 AdVideo.ID 生成 `/api/v1/stream/{id}`，不得在验签前查询 episodes，否则 id 对不上分集直接 404。
+	if token != "" && expireStr != "" && rawPath != "" {
+		expire, err := strconv.ParseInt(expireStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bad expire"})
+			return
+		}
+		decodedPath := normalizePath(rawPath)
+		if !verifyStreamToken(episodeID, token, expire, decodedPath) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired stream token"})
+			return
+		}
+		serveStreamUploadFile(c, decodedPath)
+		return
+	}
 
 	var ep models.Episode
 	if err := database.DB.First(&ep, episodeID).Error; err != nil {
@@ -110,62 +151,33 @@ func StreamVideo(c *gin.Context) {
 
 	var videoPath string
 
-	if token != "" && expireStr != "" && rawPath != "" {
-		expire, _ := strconv.ParseInt(expireStr, 10, 64)
-		decodedPath := normalizePath(rawPath)
-		if !verifyStreamToken(episodeID, token, expire, decodedPath) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired stream token"})
-			return
-		}
-		videoPath = decodedPath
-	} else {
-		// 无 HMAC 签名时：须登录，且（免费集 或 已金币解锁本集）方可拉流
-		userID := c.GetUint("user_id")
-		if userID == 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "请登录后播放，或使用带签名的播放地址"})
-			return
-		}
-		if !ep.IsFree {
-			var unlockCount int64
-			database.DB.Model(&models.UserEpisodeCoinUnlock{}).
-				Where("user_id = ? AND episode_id = ?", userID, ep.ID).Count(&unlockCount)
-			if unlockCount < 1 && !hasStreamEpisodeMainGrant(userID, ep.ID) {
-				c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "未解锁本集，请先走片头或免广后重试，或使用已签播放地址"})
-				return
-			}
-		}
-		videoPath = normalizePath(ep.VideoPath)
-		if videoPath == "" {
-			videoPath = fmt.Sprintf("./uploads/videos/%d/%d.mp4", ep.DramaID, ep.EpisodeNumber)
-		}
-
-		go func(dramaID uint, epID string) {
-			viewKey := fmt.Sprintf("views:episode:%s", epID)
-			utils.Rdb.Incr(utils.Ctx, viewKey)
-			database.DB.Exec(
-				"INSERT INTO drama_stats (drama_id, total_views, updated_at) VALUES (?, 1, NOW()) "+
-					"ON DUPLICATE KEY UPDATE total_views = total_views + 1, updated_at = NOW()", dramaID)
-		}(ep.DramaID, episodeID)
-	}
-
-	if !isPathSafe(videoPath) {
-		log.Printf("[WARN] StreamVideo: suspicious path blocked: %s", videoPath)
-		c.Status(http.StatusForbidden)
+	// 无 HMAC 签名时：须登录，且（免费集 或 已金币解锁本集）方可拉流
+	userID := c.GetUint("user_id")
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "请登录后播放，或使用带签名的播放地址"})
 		return
 	}
-
-	filePath := videoPath
-	if !strings.HasPrefix(filePath, ".") && !strings.HasPrefix(filePath, "/") {
-		filePath = "./" + filePath
-	} else if strings.HasPrefix(filePath, "/") {
-		filePath = "." + filePath
+	if !ep.IsFree {
+		var unlockCount int64
+		database.DB.Model(&models.UserEpisodeCoinUnlock{}).
+			Where("user_id = ? AND episode_id = ?", userID, ep.ID).Count(&unlockCount)
+		if unlockCount < 1 && !hasStreamEpisodeMainGrant(userID, ep.ID) {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "未解锁本集，请先走片头或免广后重试，或使用已签播放地址"})
+			return
+		}
+	}
+	videoPath = normalizePath(ep.VideoPath)
+	if videoPath == "" {
+		videoPath = fmt.Sprintf("./uploads/videos/%d/%d.mp4", ep.DramaID, ep.EpisodeNumber)
 	}
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "video file not found"})
-		return
-	}
+	go func(dramaID uint, epID string) {
+		viewKey := fmt.Sprintf("views:episode:%s", epID)
+		utils.Rdb.Incr(utils.Ctx, viewKey)
+		database.DB.Exec(
+			"INSERT INTO drama_stats (drama_id, total_views, updated_at) VALUES (?, 1, NOW()) "+
+				"ON DUPLICATE KEY UPDATE total_views = total_views + 1, updated_at = NOW()", dramaID)
+	}(ep.DramaID, episodeID)
 
-	c.Header("Cache-Control", "public, max-age=86400")
-	c.File(filePath)
+	serveStreamUploadFile(c, videoPath)
 }
