@@ -30,6 +30,8 @@ struct FeedView: View {
     @State private var timeObserver: Any?
     @State private var rankingSheet: RankingSheetEntry?
     @State private var feedStreamLoading = false
+    /// 防止快速滑动时较早发起的 `playbackAVURLAsset` Task 在完成后覆盖当前条目。
+    @State private var feedPlayerRebuildToken: Int = 0
 
     private static let pageSize = 10
 
@@ -334,10 +336,15 @@ struct FeedView: View {
             headers["Authorization"] = "Bearer \(session.token)"
         }
         feedStreamLoading = true
+        feedPlayerRebuildToken += 1
+        let rebuildToken = feedPlayerRebuildToken
         Task { @MainActor in
             defer { feedStreamLoading = false }
             let asset = await VideoCacheManager.shared.playbackAVURLAsset(remoteURL: u, headers: headers, episodeId: ep.id)
+            guard rebuildToken == feedPlayerRebuildToken else { return }
             let item = AVPlayerItem(asset: asset)
+            clearTimeObserver()
+            player?.pause()
             player = AVPlayer(playerItem: item)
             installTimeObserver(for: item)
             if parentTab == .feed, scenePhase == .active {
@@ -404,8 +411,7 @@ struct FeedView: View {
     }
 
     private func installTimeObserver(for item: AVPlayerItem) {
-        clearTimeObserver()
-        guard let player else { return }
+        guard let player, timeObserver == nil else { return }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main

@@ -389,6 +389,8 @@ final class PlayerViewModel: ObservableObject {
                 self?.loadError = error ?? "视频播放失败，请重试"
             }
         }
+        clearTimeObserver()
+        player?.pause()
         player = AVPlayer(playerItem: item)
         installTimeObserver()
         if let o = mainEndObserver {
@@ -451,8 +453,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func installTimeObserver() {
-        clearTimeObserver()
-        guard let player else { return }
+        guard let player, timeObserver == nil else { return }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main
