@@ -31,6 +31,9 @@ final class PlayerViewModel: ObservableObject {
     /// 正片资源解析/缓存命中阶段（用于加载态 UI）
     @Published var streamPreparing: Bool = false
 
+    /// 与 Android `AdSkipCache` 快照对齐：用于「有免广次数/权益在期是否免弹解锁二选一」。
+    @Published private(set) var adSkipStatusSnapshot: AdSkipStatus?
+
     let dramaId: Int64
     private let startEpisodeId: Int64?
     private let handoffEpisodeId: Int64?
@@ -73,7 +76,9 @@ final class PlayerViewModel: ObservableObject {
 
     func needsUnlockGate() -> Bool {
         guard let ep = current else { return false }
-        return shouldPaywall(ep)
+        guard shouldPaywall(ep) else { return false }
+        /// 对齐 Android `AdSkipCache.shouldSkipCoinUnlockDialogForAdSkip`：有可用免广则不应挡在解锁蒙层后。
+        return !shouldSkipCoinUnlockDialogForAdSkip()
     }
 
     func load() async {
@@ -93,9 +98,11 @@ final class PlayerViewModel: ObservableObject {
             }
             if self.current == nil { loadError = "暂无可播分集" }
             syncCountsFromCurrent()
+            await refreshAdSkipSnapshotIfLoggedIn()
             startPlaybackPipeline()
         } catch {
             loadError = error.localizedDescription
+            adSkipStatusSnapshot = nil
         }
     }
 
@@ -106,7 +113,10 @@ final class PlayerViewModel: ObservableObject {
         clearAd()
         current = ep
         syncCountsFromCurrent()
-        startPlaybackPipeline()
+        Task { @MainActor in
+            await self.refreshAdSkipSnapshotIfLoggedIn()
+            self.startPlaybackPipeline()
+        }
     }
 
     @discardableResult
@@ -162,6 +172,7 @@ final class PlayerViewModel: ObservableObject {
                 self.current = fresh
             }
             syncCountsFromCurrent()
+            await refreshAdSkipSnapshotIfLoggedIn()
             startPlaybackPipeline()
         } catch {
             let msg = error.localizedDescription
@@ -215,8 +226,12 @@ final class PlayerViewModel: ObservableObject {
         player = nil
         isPlaying = false
         guard let ep = current else { return }
-        if shouldPaywall(ep), !grantsTemporaryUnlock { return }
+        /// 对齐 Android：付费集且未选「看广告解锁」时，若持有免广权益则仍走片头接口（服务端扣次/免广），不得提前 return。
+        if shouldPaywall(ep), !grantsTemporaryUnlock, !shouldSkipCoinUnlockDialogForAdSkip() { return }
         if Task.isCancelled { return }
+        /// 已通过付费墙：`player` 已清空，`playMainStream` 较晚才把 `streamPreparing` 置为 true，中间会 `await getAdVideoPayload`，
+        /// 若没有此处则会出现「仅黑屏、无加载」——金币解锁后即为此路径。
+        streamPreparing = true
         // 对齐 Android `loadAndPlayAd()`：已登录且本集仍在 `EpisodeAdTempUnlock` 窗口内则直接起正片，不请求 `ad/video`。
         if let t = authToken, !t.isEmpty, isTemporarilyUnlocked(ep.id) {
             await playMainStream()
@@ -233,7 +248,10 @@ final class PlayerViewModel: ObservableObject {
             }
             let dur = max(1, p.duration ?? 15)
             let mt = (p.mediaType ?? "video").lowercased()
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                streamPreparing = false
+                return
+            }
             adGrantsTemporaryUnlock = grantsTemporaryUnlock || shouldPaywall(ep)
             if mt == "image", let iu = ImageURL.resolve(p.imageUrl) {
                 await runImageAd(iu, seconds: dur)
@@ -260,6 +278,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func runImageAd(_ url: URL, seconds: Int) async {
         await precacheCurrentEpisodeWhileAdPlaying()
+        streamPreparing = false
         showAd = true
         adCanClose = false
         adImageURL = url
@@ -286,6 +305,7 @@ final class PlayerViewModel: ObservableObject {
         adTimeoutTask = nil
         adCountdownTask?.cancel()
         adCountdownTask = nil
+        streamPreparing = false
         showAd = true
         adCanClose = false
         adCountdown = max(0, durationSeconds)
@@ -553,6 +573,65 @@ final class PlayerViewModel: ObservableObject {
         if let t = authToken, !t.isEmpty { hdr["Authorization"] = "Bearer \(t)" }
         let eid = episodes[next].id
         await VideoCacheManager.shared.precache(url, headers: hdr, episodeId: eid)
+    }
+
+    // MARK: - 免广告（对齐 Android `AdSkipCache`）
+
+    private func refreshAdSkipSnapshotIfLoggedIn() async {
+        if let t = authToken, !t.isEmpty {
+            adSkipStatusSnapshot = try? await APIClient.shared.getAdSkipStatus(token: t)
+        } else {
+            adSkipStatusSnapshot = nil
+        }
+    }
+
+    /// 个人中心等购买免广成功后刷新并重走播放流水线。
+    func refreshAdSkipAndRetryPipeline() async {
+        await refreshAdSkipSnapshotIfLoggedIn()
+        startPlaybackPipeline()
+    }
+
+    /// 对齐 `AdSkipCache.shouldSkipCoinUnlockDialogForAdSkip`。
+    private func shouldSkipCoinUnlockDialogForAdSkip() -> Bool {
+        guard let t = authToken, !t.isEmpty else { return false }
+        guard let st = adSkipStatusSnapshot else { return false }
+        guard isAdSkipEffectivelyActive(st) else { return false }
+        let rem = st.adSkipRemaining
+        if rem > 0 { return true }
+        if rem < 0 { return true }
+        return false
+    }
+
+    private func isAdSkipEffectivelyActive(_ st: AdSkipStatus) -> Bool {
+        guard st.adSkipActive else { return false }
+        guard let raw = st.adSkipExpiresAt?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return true
+        }
+        guard let exp = Self.parseAdSkipExpiresAt(raw) else { return st.adSkipActive }
+        return exp > Date()
+    }
+
+    private static func parseAdSkipExpiresAt(_ raw: String) -> Date? {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty { return nil }
+        let isoFrac = ISO8601DateFormatter()
+        isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = isoFrac.date(from: s) { return d }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: s) { return d }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        if let d = df.date(from: s) { return d }
+        df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        if let d = df.date(from: s) { return d }
+        if s.count >= 19, let idx = s.firstIndex(of: "+"), idx > s.startIndex {
+            df.dateFormat = "yyyy-MM-dd'T'HH:mm:ssXXX"
+            if let d = df.date(from: s) { return d }
+        }
+        return nil
     }
 
     private func isTemporarilyUnlocked(_ episodeId: Int64) -> Bool {

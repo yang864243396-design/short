@@ -241,10 +241,12 @@ struct PlayerView: View {
             .contentShape(Rectangle())
             .simultaneousGesture(
                 SpatialTapGesture(count: 2).onEnded { value in
+                    guard !needsUnlock else { return }
                     Task { await likeFromDoubleTap(at: value.location) }
                 }
             )
             .onTapGesture {
+                guard !needsUnlock else { return }
                 if vm.showAd {
                     if let ap = vm.adPlayer {
                         if ap.rate > 0 { ap.pause() } else { ap.play() }
@@ -257,6 +259,7 @@ struct PlayerView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 60)
                     .onEnded { value in
+                        guard !needsUnlock else { return }
                         guard abs(value.translation.height) > abs(value.translation.width) else { return }
                         if value.translation.height < -80 {
                             if !vm.selectRelativeEpisode(offset: 1), vm.isOnLastEpisode {
@@ -293,13 +296,15 @@ struct PlayerView: View {
         }
         .onChange(of: session.isLoggedIn) { on in
             vm.authToken = on ? session.token : nil
-            if on {
-                Task { await vm.load() }
-            }
+            Task { await vm.load() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .hgAdSkipPurchased)) { _ in
-            if vm.showAd {
-                Task { await vm.finishAdAndPlayMain() }
+            Task { @MainActor in
+                if vm.showAd {
+                    await vm.finishAdAndPlayMain()
+                } else {
+                    await vm.refreshAdSkipAndRetryPipeline()
+                }
             }
         }
         .onChange(of: vm.loadError) { error in
