@@ -434,7 +434,11 @@ final class PlayerViewModel: ObservableObject {
         } else {
             u = PlaybackURL.url(for: ep)
         }
-        guard let u else { return }
+        guard let u else {
+            /// 由 `runAdThenMain` 等路径先置 `streamPreparing = true` 时：无可用拉流 URL 须清掉加载态。
+            streamPreparing = false
+            return
+        }
         var headers: [String: String] = [:]
         if let t = authToken, !t.isEmpty {
             headers["Authorization"] = "Bearer \(t)"

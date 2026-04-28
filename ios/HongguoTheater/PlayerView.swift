@@ -15,7 +15,18 @@ struct PlayerView: View {
     @State private var rankingSheet: PlayerRankingSheetEntry?
     @State private var controlsVisible = true
     @State private var dragProgress: Double?
+    /// 对齐 Android `PlayerActivity`：整页（视频区 + 底部选集条）跟手竖滑 + 松手吸附与切集动画。
+    @State private var episodeSlideOffset: CGFloat = 0
+    @State private var episodeSlideAnimating = false
+    @State private var episodeSlideVerticalLocked: Bool?
+    @State private var episodeSlideBaseOffset: CGFloat = 0
+    @State private var episodeSlideLastTransY: CGFloat = 0
+    @State private var episodeSlideLastTime: CFTimeInterval?
+    @State private var episodeSlideEndVelocityY: CGFloat = 0
     private let onRequestNextDramaFromFeed: (() -> Void)?
+
+    private static let episodeSnapDistanceFraction: CGFloat = 0.20
+    private static let episodeSnapVelocityPoints: CGFloat = 380
 
     init(
         dramaId: Int64,
@@ -38,50 +49,208 @@ struct PlayerView: View {
         vm.needsUnlockGate()
     }
 
+    /// 对齐 Android：`loadAndPlayAd` 开始后应关掉二选一浮层；`streamPreparing` 已为 true 时仍显示蒙层会把加载态/贴片挡死，看起来像「按钮无反应」。
+    private var unlockGateOverlayVisible: Bool {
+        needsUnlock && !vm.showAd && !vm.streamPreparing
+    }
+
     var body: some View {
         GeometryReader { proxy in
+            let pageH = proxy.size.height
             ZStack {
                 Color.black.ignoresSafeArea()
-                Group {
-                    if vm.showAd, let adp = vm.adPlayer {
-                        InlineVideoSurface(player: adp)
+                ZStack {
+                    Group {
+                        if vm.showAd, let adp = vm.adPlayer {
+                            InlineVideoSurface(player: adp)
+                                .ignoresSafeArea()
+                        } else if vm.showAd, let u = vm.adImageURL {
+                            ZStack {
+                                AsyncImage(url: u) { phase in
+                                    switch phase {
+                                    case .empty:
+                                        ProgressView().tint(.white)
+                                    case .success(let img):
+                                        img
+                                            .resizable()
+                                            .scaledToFill()
+                                    case .failure:
+                                        Color(white: 0.12)
+                                    @unknown default:
+                                        Color(white: 0.12)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                                .clipped()
+                            }
                             .ignoresSafeArea()
-                    } else if vm.showAd, let u = vm.adImageURL {
-                        ZStack {
-                            AsyncImage(url: u) { phase in
-                                switch phase {
-                                case .empty:
-                                    ProgressView().tint(.white)
-                                case .success(let img):
-                                    img
-                                        .resizable()
-                                        .scaledToFill()
-                                case .failure:
-                                    Color(white: 0.12)
-                                @unknown default:
-                                    Color(white: 0.12)
+                        } else if let p = vm.player {
+                            InlineVideoSurface(player: p)
+                                .ignoresSafeArea()
+                        } else if vm.streamPreparing {
+                            ProgressView("加载中…")
+                                .tint(.white)
+                                .foregroundStyle(.white)
+                        } else if vm.busy {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                    }
+
+                    if vm.showAd {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 8) {
+                                    Text(vm.adCanClose ? "广告" : "广告 \(vm.adCountdown)s")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(Capsule().fill(Color.black.opacity(0.45)))
+                                    Button(vm.adCanClose ? "关闭广告" : "跳过") {
+                                        vm.requestCloseAd()
+                                    }
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(Capsule().fill(AppTheme.primary.opacity(0.85)))
                                 }
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                            .clipped()
+                            .padding(16)
+                            Spacer()
                         }
-                        .ignoresSafeArea()
-                    } else if let p = vm.player {
-                        InlineVideoSurface(player: p)
-                            .ignoresSafeArea()
-                    } else if vm.streamPreparing {
-                        ProgressView("加载中…")
-                            .tint(.white)
-                            .foregroundStyle(.white)
-                    } else if vm.busy {
-                        ProgressView()
-                            .tint(.white)
+                    }
+
+                    if !vm.showAd, !needsUnlock, controlsVisible {
+                    VStack {
+                        HStack {
+                            Button {
+                                dismiss()
+                            } label: {
+                                Image(systemName: "chevron.backward")
+                                    .font(.title2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(10)
+                                    .background(Circle().fill(Color.black.opacity(0.35)))
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 8)
+
+                        Spacer()
+
+                        HStack(alignment: .bottom) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                if let badge = (vm.drama ?? vm.current?.drama)?.preferredRankingBadge {
+                                    RankingBadgeView(info: badge) {
+                                        rankingSheet = PlayerRankingSheetEntry(type: badge.type)
+                                    }
+                                }
+                                Text(vm.drama?.title ?? vm.current?.drama?.title ?? "")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                    .shadow(radius: 4)
+                                Text(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color.white.opacity(0.9))
+                                descriptionBlock
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            VStack(spacing: 14) {
+                                sideIcon("heart.fill", label: formatCount(vm.likeCount), on: vm.liked) {
+                                    guard session.isLoggedIn else {
+                                        showLogin = true
+                                        return
+                                    }
+                                    Task {
+                                        let liked = await vm.toggleLike()
+                                        if liked {
+                                            addLikeBurst(at: CGPoint(x: proxy.size.width - 48, y: proxy.size.height * 0.58))
+                                        }
+                                    }
+                                }
+                                if vm.current != nil {
+                                    sideIcon("text.bubble.fill", label: formatCount(vm.commentCount), on: false) {
+                                        if !session.isLoggedIn {
+                                            showLogin = true
+                                            return
+                                        }
+                                        showComments = true
+                                    }
+                                }
+                                sideIcon("star.fill", label: "收藏", on: vm.collected) {
+                                    guard session.isLoggedIn else {
+                                        showLogin = true
+                                        return
+                                    }
+                                    Task { await vm.toggleCollect() }
+                                }
+                                ShareLink(item: shareText) {
+                                    VStack(spacing: 4) {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.title2)
+                                            .foregroundStyle(.white)
+                                            .padding(10)
+                                            .background(Circle().fill(Color.black.opacity(0.35)))
+                                        Text("分享")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                        .padding(.bottom, playerDockTopAlignPadding)
+                        .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
+                    }
+                    }
+
+                    if !vm.showAd, !needsUnlock {
+                        VStack {
+                            Spacer()
+                            playerDock
+                        }
+                        .ignoresSafeArea(edges: .bottom)
+                    }
+
+                    ForEach(likeBursts) { burst in
+                        FloatingLikeBurstView(burst: burst) {
+                            likeBursts.removeAll { $0.id == burst.id }
+                        }
                     }
                 }
+                .offset(y: episodeSlideOffset)
+                .contentShape(Rectangle())
+                .simultaneousGesture(episodeSwipeGesture(pageHeight: pageH))
+                .simultaneousGesture(
+                    SpatialTapGesture(count: 2).onEnded { value in
+                        guard !needsUnlock else { return }
+                        Task { await likeFromDoubleTap(at: value.location) }
+                    }
+                )
+                .onTapGesture {
+                    guard !needsUnlock else { return }
+                    if vm.showAd {
+                        if let ap = vm.adPlayer {
+                            if ap.rate > 0 { ap.pause() } else { ap.play() }
+                        }
+                    } else {
+                        vm.togglePlayPause()
+                    }
+                    controlsVisible = true
+                }
 
-                if needsUnlock, !vm.showAd {
-                    Color.black.opacity(0.72).ignoresSafeArea()
-                        .zIndex(20)
+                /// 独立于竖滑手势层：避免父级 `DragGesture` / `contentShape` 吞掉按钮点击。
+                if unlockGateOverlayVisible {
+                    Color.black.opacity(0.72)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(true)
+                        .zIndex(50)
                     VStack(spacing: 14) {
                         Text("解锁观看")
                             .font(.headline)
@@ -108,186 +277,9 @@ struct PlayerView: View {
                     .background(AppTheme.surface.opacity(0.96))
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .padding()
-                    .zIndex(21)
-                }
-
-                if vm.showAd {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 8) {
-                                Text(vm.adCanClose ? "广告" : "广告 \(vm.adCountdown)s")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Capsule().fill(Color.black.opacity(0.45)))
-                                Button(vm.adCanClose ? "关闭广告" : "跳过") {
-                                    vm.requestCloseAd()
-                                }
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Capsule().fill(AppTheme.primary.opacity(0.85)))
-                            }
-                        }
-                        .padding(16)
-                        Spacer()
-                    }
-                }
-
-                if !vm.showAd, !needsUnlock, controlsVisible {
-                VStack {
-                    HStack {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "chevron.backward")
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(10)
-                                .background(Circle().fill(Color.black.opacity(0.35)))
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.top, 8)
-
-                    Spacer()
-
-                    HStack(alignment: .bottom) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            if let badge = (vm.drama ?? vm.current?.drama)?.preferredRankingBadge {
-                                RankingBadgeView(info: badge) {
-                                    rankingSheet = PlayerRankingSheetEntry(type: badge.type)
-                                }
-                            }
-                            Text(vm.drama?.title ?? vm.current?.drama?.title ?? "")
-                                .font(.headline)
-                                .foregroundStyle(.white)
-                                .shadow(radius: 4)
-                            Text(vm.current.map { "第 \($0.episodeNumber) 集" } ?? "")
-                                .font(.subheadline)
-                                .foregroundStyle(Color.white.opacity(0.9))
-                            descriptionBlock
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        VStack(spacing: 14) {
-                            sideIcon("heart.fill", label: formatCount(vm.likeCount), on: vm.liked) {
-                                guard session.isLoggedIn else {
-                                    showLogin = true
-                                    return
-                                }
-                                Task {
-                                    let liked = await vm.toggleLike()
-                                    if liked {
-                                        addLikeBurst(at: CGPoint(x: proxy.size.width - 48, y: proxy.size.height * 0.58))
-                                    }
-                                }
-                            }
-                            if vm.current != nil {
-                                sideIcon("text.bubble.fill", label: formatCount(vm.commentCount), on: false) {
-                                    if !session.isLoggedIn {
-                                        showLogin = true
-                                        return
-                                    }
-                                    showComments = true
-                                }
-                            }
-                            sideIcon("star.fill", label: "收藏", on: vm.collected) {
-                                guard session.isLoggedIn else {
-                                    showLogin = true
-                                    return
-                                }
-                                Task { await vm.toggleCollect() }
-                            }
-                            ShareLink(item: shareText) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.title2)
-                                        .foregroundStyle(.white)
-                                        .padding(10)
-                                        .background(Circle().fill(Color.black.opacity(0.35)))
-                                    Text("分享")
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, playerDockTopAlignPadding)
-                    .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
-                }
-                }
-
-                if !vm.showAd, !needsUnlock {
-                    VStack {
-                        Spacer()
-                        playerDock
-                    }
-                    .ignoresSafeArea(edges: .bottom)
-                }
-
-                ForEach(likeBursts) { burst in
-                    FloatingLikeBurstView(burst: burst) {
-                        likeBursts.removeAll { $0.id == burst.id }
-                    }
+                    .zIndex(51)
                 }
             }
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                SpatialTapGesture(count: 2).onEnded { value in
-                    guard !needsUnlock else { return }
-                    Task { await likeFromDoubleTap(at: value.location) }
-                }
-            )
-            .onTapGesture {
-                guard !needsUnlock else { return }
-                if vm.showAd {
-                    if let ap = vm.adPlayer {
-                        if ap.rate > 0 { ap.pause() } else { ap.play() }
-                    }
-                } else {
-                    vm.togglePlayPause()
-                }
-                controlsVisible = true
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 60)
-                    .onEnded { value in
-                        guard !needsUnlock else { return }
-                        guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                        if value.translation.height < -80 {
-                            if !vm.selectRelativeEpisode(offset: 1), vm.isOnLastEpisode {
-                                if let onRequestNextDramaFromFeed {
-                                    Task { @MainActor in
-                                        onRequestNextDramaFromFeed()
-                                    }
-                                } else {
-                                    hgDialog = HGDialog(
-                                        title: "提示",
-                                        message: "已经是最后一集了",
-                                        primaryTitle: "确定",
-                                        informStyle: true
-                                    )
-                                }
-                            }
-                        } else if value.translation.height > 80 {
-                            if !vm.selectRelativeEpisode(offset: -1), vm.isOnFirstEpisode {
-                                hgDialog = HGDialog(
-                                    title: "提示",
-                                    message: "已经是第一集了",
-                                    primaryTitle: "确定",
-                                    informStyle: true
-                                )
-                            }
-                        }
-                    }
-            )
         }
         .navigationBarHidden(true)
         .task {
@@ -433,6 +425,184 @@ struct PlayerView: View {
             }
         }
         .hgDialog($hgDialog)
+    }
+
+    private func episodeSwipeGesture(pageHeight: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { value in
+                guard !episodeSlideAnimating else { return }
+                guard !needsUnlock, !vm.showAd else { return }
+                let t = value.translation
+                if episodeSlideVerticalLocked == nil {
+                    guard hypot(t.width, t.height) >= 14 else { return }
+                    if abs(t.width) > abs(t.height) {
+                        episodeSlideVerticalLocked = false
+                        return
+                    }
+                    episodeSlideVerticalLocked = true
+                    episodeSlideBaseOffset = episodeSlideOffset
+                    episodeSlideLastTransY = t.height
+                    episodeSlideLastTime = CFAbsoluteTimeGetCurrent()
+                    episodeSlideEndVelocityY = 0
+                }
+                guard episodeSlideVerticalLocked == true else { return }
+                let raw = episodeSlideBaseOffset + value.translation.height
+                episodeSlideOffset = clampEpisodeSlideOffset(raw, height: pageHeight)
+                let now = CFAbsoluteTimeGetCurrent()
+                if let prevT = episodeSlideLastTime {
+                    let dy = value.translation.height - episodeSlideLastTransY
+                    let dt = max(now - prevT, 1e-5)
+                    episodeSlideEndVelocityY = dy / CGFloat(dt)
+                }
+                episodeSlideLastTransY = value.translation.height
+                episodeSlideLastTime = now
+            }
+            .onEnded { _ in
+                let locked = episodeSlideVerticalLocked
+                episodeSlideVerticalLocked = nil
+                episodeSlideLastTransY = 0
+                episodeSlideLastTime = nil
+                guard locked == true else { return }
+                guard !episodeSlideAnimating else { return }
+                settleEpisodeVerticalSwipe(pageHeight: pageHeight)
+            }
+    }
+
+    private func clampEpisodeSlideOffset(_ raw: CGFloat, height: CGFloat) -> CGFloat {
+        let maxO = height * 1.15
+        var y = min(maxO, max(-maxO, raw))
+        if vm.isOnFirstEpisode, y > 0 {
+            y = rubberBandOverscroll(y, range: height * 0.4)
+        }
+        return y
+    }
+
+    private func rubberBandOverscroll(_ overscroll: CGFloat, range: CGFloat) -> CGFloat {
+        guard overscroll > 0, range > 1 else { return overscroll }
+        return range * (1 - CGFloat(exp(-Double(overscroll / range))))
+    }
+
+    private func settleEpisodeVerticalSwipe(pageHeight: CGFloat) {
+        let h = pageHeight
+        let ty = episodeSlideOffset
+        let threshold = h * Self.episodeSnapDistanceFraction
+        let vy = episodeSlideEndVelocityY
+        let wantNext = ty < -threshold || vy < -Self.episodeSnapVelocityPoints
+        let wantPrev = ty > threshold || vy > Self.episodeSnapVelocityPoints
+        if wantNext, wantPrev {
+            springBackEpisodeSlide(height: h)
+            return
+        }
+        if wantNext {
+            handleSwipeWantNext(height: h)
+            return
+        }
+        if wantPrev {
+            handleSwipeWantPrev(height: h)
+            return
+        }
+        springBackEpisodeSlide(height: h)
+    }
+
+    private func handleSwipeWantNext(height: CGFloat) {
+        if vm.isOnLastEpisode {
+            if let cb = onRequestNextDramaFromFeed {
+                swipeExitThenReset(height: height, exitDy: -height) {
+                    cb()
+                }
+            } else {
+                hgDialog = HGDialog(
+                    title: "提示",
+                    message: "已经是最后一集了",
+                    primaryTitle: "确定",
+                    informStyle: true
+                )
+                springBackEpisodeSlide(height: height)
+            }
+            return
+        }
+        swipeAnimatedChangeEpisode(swipeUp: true, height: height)
+    }
+
+    private func handleSwipeWantPrev(height: CGFloat) {
+        if vm.isOnFirstEpisode {
+            hgDialog = HGDialog(
+                title: "提示",
+                message: "已经是第一集了",
+                primaryTitle: "确定",
+                informStyle: true
+            )
+            springBackEpisodeSlide(height: height)
+            return
+        }
+        swipeAnimatedChangeEpisode(swipeUp: false, height: height)
+    }
+
+    private func swipeAnimatedChangeEpisode(swipeUp: Bool, height: CGFloat) {
+        episodeSlideAnimating = true
+        let exit: CGFloat = swipeUp ? -height : height
+        let durOut = settleDuration(from: episodeSlideOffset, to: exit, height: height)
+        withAnimation(Self.episodeSwitchCurve(duration: durOut)) {
+            episodeSlideOffset = exit
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + durOut) {
+            if swipeUp {
+                _ = vm.selectRelativeEpisode(offset: 1)
+                episodeSlideOffset = height
+            } else {
+                _ = vm.selectRelativeEpisode(offset: -1)
+                episodeSlideOffset = -height
+            }
+            let durIn = settleDuration(from: episodeSlideOffset, to: 0, height: height)
+            withAnimation(Self.episodeSwitchCurve(duration: durIn)) {
+                episodeSlideOffset = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + durIn) {
+                episodeSlideAnimating = false
+            }
+        }
+    }
+
+    private func swipeExitThenReset(height: CGFloat, exitDy: CGFloat, completion: @escaping () -> Void) {
+        episodeSlideAnimating = true
+        let durOut = settleDuration(from: episodeSlideOffset, to: exitDy, height: height)
+        withAnimation(Self.episodeSwitchCurve(duration: durOut)) {
+            episodeSlideOffset = exitDy
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + durOut) {
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                episodeSlideOffset = 0
+            }
+            episodeSlideAnimating = false
+            completion()
+        }
+    }
+
+    private func springBackEpisodeSlide(height: CGFloat) {
+        let ty = episodeSlideOffset
+        guard abs(ty) > 1.5 else {
+            episodeSlideOffset = 0
+            return
+        }
+        episodeSlideAnimating = true
+        let dur = settleDuration(from: ty, to: 0, height: height)
+        withAnimation(Self.episodeSwitchCurve(duration: dur)) {
+            episodeSlideOffset = 0
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + dur) {
+            episodeSlideAnimating = false
+        }
+    }
+
+    private func settleDuration(from: CGFloat, to: CGFloat, height: CGFloat) -> Double {
+        let span = abs(to - from) / max(height, 1)
+        return Double(min(0.42, max(0.16, 0.16 + span * 0.32)))
+    }
+
+    private static func episodeSwitchCurve(duration: Double) -> Animation {
+        .timingCurve(0.4, 0, 0.2, 1, duration: duration)
     }
 
     @ViewBuilder
