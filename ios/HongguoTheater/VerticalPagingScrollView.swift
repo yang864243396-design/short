@@ -61,7 +61,13 @@ struct VerticalPagingScrollView: UIViewRepresentable {
                 lastCount = 0
                 return
             }
-            if n == lastCount, abs(w - lastW) < 0.5, abs(h - lastH) < 0.5 {
+            // 仅看 (count, size) 相同就跳过会漏掉「count 没变但子宿主数量已不同步」的情况：
+            // 此时 refreshHostedPages 会因 hosts.count != count 直接放弃，表现像「刷剧永远只有一条/滑不动」。
+            let layoutUnchanged = n == lastCount
+                && abs(w - lastW) < 0.5
+                && abs(h - lastH) < 0.5
+                && hosts.count == n
+            if layoutUnchanged {
                 return
             }
             lastCount = n

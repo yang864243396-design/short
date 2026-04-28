@@ -85,10 +85,14 @@ public class ExoPlayerCache {
                 .setDefaultRequestProperties(headers.isEmpty() ? Collections.emptyMap() : headers);
     }
 
-    /** 与全屏、Feed 共用：略增缓冲，减少弱网下断续卡顿 */
+    /**
+     * 与全屏、Feed 共用。
+     * 此前 minBuffer=20s 低于 Media3 默认（约 50s），缓冲池偏浅，容易播到一半等数据→体感「一卡一卡」；
+     * 适当拉高时间型缓冲，略增起播等待，换更稳的连续播放（仍优先时间阈值便于起播）。
+     */
     public static DefaultLoadControl createVideoLoadControl() {
         return new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(20_000, 60_000, 2_500, 5_000)
+                .setBufferDurationsMs(50_000, 120_000, 2_500, 10_000)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build();
     }

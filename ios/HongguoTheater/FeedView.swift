@@ -487,12 +487,16 @@ struct FeedView: View {
         defer { loading = false }
         do {
             let token = session.isLoggedIn ? session.token : nil
-            let list = try await APIClient.shared.getFeed(
-                page: page,
-                pageSize: Self.pageSize,
-                episodeNumber: 1,
-                token: token
-            )
+            func fetchFeed(_ p: Int) async throws -> [Episode] {
+                try await APIClient.shared.getFeed(
+                    page: p,
+                    pageSize: Self.pageSize,
+                    episodeNumber: 1,
+                    token: token
+                )
+            }
+
+            var list = try await fetchFeed(page)
             if append {
                 episodes.append(contentsOf: list)
             } else {
@@ -502,6 +506,18 @@ struct FeedView: View {
             }
             loadError = nil
             loadMoreError = nil
+
+            // 首屏不足 pageSize 时用户无法上滑触发「靠近尾部预加载」，且 `Task { loadMore }` 若在仍持有 loading 的帧里排队可能被 guard 挡掉。
+            // 这里在同一轮请求里链式拉取直到凑满一页或接口返回空。
+            if !append {
+                while !list.isEmpty, episodes.count < Self.pageSize {
+                    page += 1
+                    list = try await fetchFeed(page)
+                    if list.isEmpty { break }
+                    episodes.append(contentsOf: list)
+                }
+            }
+
             if !episodes.isEmpty {
                 let indexWasInvalid = currentIndex >= episodes.count
                 if indexWasInvalid {
