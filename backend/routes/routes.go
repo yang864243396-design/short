@@ -20,6 +20,7 @@ func Setup(r *gin.Engine) {
 
 	r.Static("/uploads/images", "./uploads/images")
 	r.Static("/uploads/avatars", "./uploads/avatars")
+	r.Static("/uploads/app-releases", "./uploads/app-releases")
 
 	api := r.Group("/api/v1")
 	{
@@ -28,6 +29,8 @@ func Setup(r *gin.Engine) {
 
 		// 用于排查：进程是否监听、MySQL/Redis、当前 Redis 配置摘要（不含密码）
 		api.GET("/health", handlers.GetHealth)
+
+		api.GET("/app/release-check", handlers.AppReleaseCheck)
 
 		api.GET("/home", handlers.GetHomePage)
 
@@ -162,6 +165,13 @@ func Setup(r *gin.Engine) {
 
 			adminProtected.POST("/upload/video", handlers.UploadVideo)
 			adminProtected.POST("/upload/image", handlers.UploadImage)
+			adminProtected.POST("/upload/app-release", handlers.UploadAppReleaseFile)
+
+			adminProtected.GET("/app-release-packages", handlers.AdminListAppReleasePackages)
+			adminProtected.POST("/app-release-packages", handlers.AdminCreateAppReleasePackage)
+			adminProtected.PUT("/app-release-packages/:id", handlers.AdminUpdateAppReleasePackage)
+			adminProtected.PUT("/app-release-packages/:id/enabled", handlers.AdminSetAppReleasePackageEnabled)
+			adminProtected.DELETE("/app-release-packages/:id", handlers.AdminDeleteAppReleasePackage)
 		}
 	}
 }

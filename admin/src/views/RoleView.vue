@@ -79,6 +79,7 @@ const allPerms = [
   { key: 'comments', label: '评论管理' },
   { key: 'banners', label: '轮播广告' },
   { key: 'ads', label: '解锁广告' },
+  { key: 'app-release-packages', label: '客户端版本管理' },
   { key: 'roles', label: '角色管理' },
 ]
 

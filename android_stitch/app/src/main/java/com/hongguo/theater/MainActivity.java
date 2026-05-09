@@ -11,6 +11,7 @@ import com.hongguo.theater.ui.home.HomeFragment;
 import com.hongguo.theater.ui.play.PlayFeedFragment;
 import com.hongguo.theater.ui.profile.ProfileFragment;
 import com.hongguo.theater.utils.AdSkipCache;
+import com.hongguo.theater.utils.AppUpdateHelper;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -29,6 +30,8 @@ public class MainActivity extends AppCompatActivity {
         setupFragments();
         setupBottomNav();
         handleLaunchIntent(getIntent());
+
+        AppUpdateHelper.checkOnColdStart(this);
     }
 
     @Override

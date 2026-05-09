@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-const AllPermissions = "dashboard,dramas,categories,users,admins,comments,banners,ads,roles,wallet,recharge-packages"
+const AllPermissions = "dashboard,dramas,categories,users,admins,comments,banners,ads,roles,wallet,recharge-packages,app-release-packages"
 
 type AdminRole struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`

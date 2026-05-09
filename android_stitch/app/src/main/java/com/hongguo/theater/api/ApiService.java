@@ -13,6 +13,9 @@ import retrofit2.http.*;
 
 public interface ApiService {
 
+    @GET("app/release-check")
+    Call<ApiResponse<ReleaseCheckPayload>> getReleaseCheck(@Query("platform") String platform);
+
     // ============ Home ============
     @GET("home")
     Call<ApiResponse<HomeData>> getHome();

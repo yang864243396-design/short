@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/mysql"
@@ -58,6 +59,7 @@ func Init(cfg config.DBConfig) {
 		&models.PayProductConfig{},
 		&models.RechargeMchSeq{},
 		&models.AdSkipConfig{},
+		&models.AppReleasePackage{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to migrate: %v", err)
@@ -75,6 +77,7 @@ func Init(cfg config.DBConfig) {
 
 	cleanDuplicateEpisodes()
 	syncAllDramaEpisodeCounts()
+	backfillAppReleasePackagePerm()
 }
 
 // dropAppUserVipLevelColumnIfExists removes legacy vip_level column if present (GORM AutoMigrate won't drop columns).
@@ -303,6 +306,59 @@ func seedAdmin() {
 		Status:       1,
 	}
 	DB.Create(&admin)
+}
+
+// backfillAppReleasePackagePerm：凡角色已拥有 AllPermissions 中除 app-release-packages 外的全部权限，则幂等追加 app-release-packages（含历史「全量」自定义角色）
+func backfillAppReleasePackagePerm() {
+	const target = "app-release-packages"
+	parts := strings.Split(models.AllPermissions, ",")
+	var baseRequired []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || p == target {
+			continue
+		}
+		baseRequired = append(baseRequired, p)
+	}
+	if len(baseRequired) == 0 {
+		return
+	}
+	var roles []models.AdminRole
+	if err := DB.Find(&roles).Error; err != nil {
+		log.Printf("backfill %s: list roles: %v", target, err)
+		return
+	}
+	for i := range roles {
+		r := &roles[i]
+		raw := strings.TrimSpace(r.Permissions)
+		if raw == "" {
+			continue
+		}
+		if strings.Contains(","+raw+",", ","+target+",") {
+			continue
+		}
+		have := make(map[string]struct{})
+		for _, x := range strings.Split(raw, ",") {
+			x = strings.TrimSpace(x)
+			if x != "" {
+				have[x] = struct{}{}
+			}
+		}
+		all := true
+		for _, need := range baseRequired {
+			if _, ok := have[need]; !ok {
+				all = false
+				break
+			}
+		}
+		if !all {
+			continue
+		}
+		r.Permissions = raw + "," + target
+		if err := DB.Save(r).Error; err != nil {
+			log.Printf("backfill %s role id=%d: %v", target, r.ID, err)
+		}
+	}
 }
 
 func hashPassword(password string) (string, error) {

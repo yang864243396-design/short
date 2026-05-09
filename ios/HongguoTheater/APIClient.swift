@@ -456,6 +456,21 @@ extension APIClient {
         guard r.isSuccess, let d = r.data else { throw APIError.business(r.message ?? "操作失败") }
         return d
     }
+
+    /// 冷启动版本检查：`data` 为 null 或请求失败时返回 nil，不抛错
+    func fetchReleaseCheckOptional(platform: String) async -> ReleaseCheckPayload? {
+        do {
+            let r: APIResponse<ReleaseCheckPayload> = try await fetchResponse(
+                path: "app/release-check",
+                query: ["platform": platform],
+                token: nil
+            )
+            guard r.isSuccess else { return nil }
+            return r.data
+        } catch {
+            return nil
+        }
+    }
 }
 
 /// 用于 `data` 为 null 的响应

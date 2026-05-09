@@ -7,6 +7,7 @@ struct MainTabView: View {
     @State private var tab: MainTab = .home
     @State var feedScrollAfterDrama: Int64 = 0
     @State private var showLogin = false
+    @State private var appUpdateGate: AppUpdateGateState?
 
     var body: some View {
         TabView(selection: $tab) {
@@ -32,6 +33,29 @@ struct MainTabView: View {
         .sheet(isPresented: $showLogin) {
             LoginView()
                 .environmentObject(session)
+        }
+        .fullScreenCover(item: $appUpdateGate) { gate in
+            AppUpdateGateView(gate: gate) { appUpdateGate = nil }
+        }
+        .task {
+            await coldStartReleaseCheck()
+        }
+    }
+
+    private func coldStartReleaseCheck() async {
+        let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        guard let payload = await APIClient.shared.fetchReleaseCheckOptional(platform: "ios") else { return }
+        guard AppVersionUpdate.shouldPrompt(local: local, remote: payload.version) else { return }
+        let raw = (payload.installUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, let url = URL(string: raw) else { return }
+        let notes = (payload.releaseNotes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        await MainActor.run {
+            appUpdateGate = AppUpdateGateState(
+                version: payload.version,
+                notes: notes,
+                force: payload.forceUpdate,
+                installURL: url
+            )
         }
     }
 }

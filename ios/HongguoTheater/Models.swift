@@ -1,5 +1,14 @@
 import Foundation
 
+// MARK: - App release / 版本更新
+struct ReleaseCheckPayload: Codable, Hashable, Sendable {
+    let version: String
+    let forceUpdate: Bool
+    let releaseNotes: String?
+    let downloadUrl: String?
+    let installUrl: String?
+}
+
 // MARK: - API envelope
 struct APIResponse<T: Decodable & Sendable>: Decodable, Sendable {
     let code: Int

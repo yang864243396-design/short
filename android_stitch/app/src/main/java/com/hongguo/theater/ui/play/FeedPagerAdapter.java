@@ -186,7 +186,7 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
                 ExoPlayerCache.getDataSourceFactory(context));
         ExoPlayer player = new ExoPlayer.Builder(context)
                 .setMediaSourceFactory(sourceFactory)
-                .setLoadControl(ExoPlayerCache.createVideoLoadControl())
+                .setLoadControl(ExoPlayerCache.createFeedLoadControl())
                 .build();
         player.setMediaItem(MediaItem.fromUri(Uri.parse(videoUrl)));
         player.setRepeatMode(ExoPlayer.REPEAT_MODE_ONE);
@@ -500,7 +500,7 @@ public class FeedPagerAdapter extends RecyclerView.Adapter<FeedPagerAdapter.Feed
                     int progress = (int) (player.getCurrentPosition() * 1000 / player.getDuration());
                     seekBar.setProgress(progress);
                 }
-                handler.postDelayed(this, 200);
+                handler.postDelayed(this, 480);
             }
         };
         progressRunnables.put(position, runnable);

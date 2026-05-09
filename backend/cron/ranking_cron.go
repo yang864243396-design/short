@@ -9,11 +9,25 @@ import (
 	"short-drama-backend/utils"
 )
 
+// nextScheduledRankingRefresh 下一次全量刷新时刻：每日 04:00 与 15:00 各一次（本地时区）。
+func nextScheduledRankingRefresh(now time.Time) time.Time {
+	loc := now.Location()
+	today4 := time.Date(now.Year(), now.Month(), now.Day(), 4, 0, 0, 0, loc)
+	today15 := time.Date(now.Year(), now.Month(), now.Day(), 15, 0, 0, 0, loc)
+	if now.Before(today4) {
+		return today4
+	}
+	if now.Before(today15) {
+		return today15
+	}
+	return today4.AddDate(0, 0, 1)
+}
+
 func StartRankingCron() {
 	go func() {
 		for {
 			now := time.Now()
-			next := time.Date(now.Year(), now.Month(), now.Day()+1, 4, 0, 0, 0, now.Location())
+			next := nextScheduledRankingRefresh(now)
 			duration := next.Sub(now)
 
 			fmt.Printf("[Cron] Next ranking refresh at %s (in %s)\n", next.Format("2006-01-02 15:04:05"), duration)

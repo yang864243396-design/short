@@ -123,7 +123,7 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean controlsVisible = true;
     private boolean isUserSeeking = false;
     private static final int CONTROLS_HIDE_DELAY = 3000;
-    private static final int PROGRESS_UPDATE_INTERVAL = 200;
+    private static final int PROGRESS_UPDATE_INTERVAL = 280;
     /** 刷剧页 ViewPager2 竖滑相近的切换节奏（时长 + FastOutSlowIn） */
     private static final int EPISODE_SWITCH_DURATION_MS = 320;
     /** 松手时超过屏高的比例则吸附切集（与常见分页手感接近） */
@@ -153,6 +153,12 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     @Nullable
     private Runnable adCountdownRunnable;
+    /** 贴片起播后再预拉待播正片，避免与广告流抢 SimpleCache 单线程与带宽（减轻「广告、正片都卡」）。 */
+    @Nullable
+    private Runnable deferredMainPrecacheWhileAd;
+    /** 切集后立即 precache 下一集会与当前解码抢 IO，微延迟合并请求。 */
+    @Nullable
+    private Runnable deferredNextEpisodePrecache;
     /** 服务端免广告权益（广告跳过卡） */
     private final AtomicBoolean adSkipActive = new AtomicBoolean(false);
 
@@ -657,7 +663,7 @@ public class PlayerActivity extends AppCompatActivity {
         player = new ExoPlayer.Builder(this)
                 .setBandwidthMeter(bandwidthMeter)
                 .setMediaSourceFactory(sourceFactory)
-                .setLoadControl(ExoPlayerCache.createVideoLoadControl())
+                .setLoadControl(ExoPlayerCache.createFullscreenLoadControl())
                 .build();
         playerView.setPlayer(player);
         playerView.setUseController(false);
@@ -1200,13 +1206,47 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void precacheNextEpisode(int currentIndex) {
+        if (deferredNextEpisodePrecache != null) {
+            handler.removeCallbacks(deferredNextEpisodePrecache);
+            deferredNextEpisodePrecache = null;
+        }
         if (episodes == null) return;
         int nextIndex = currentIndex + 1;
         if (nextIndex >= episodes.size()) return;
 
-        Episode next = episodes.get(nextIndex);
-        String nextUrl = ApiClient.getStreamUrl(next);
-        ExoPlayerCache.precache(this, nextUrl);
+        final Episode next = episodes.get(nextIndex);
+        final int anchorIndex = currentIndex;
+        deferredNextEpisodePrecache = () -> {
+            deferredNextEpisodePrecache = null;
+            if (isFinishing() || episodes == null) return;
+            if (currentEpisodeIndex != anchorIndex) return;
+            String nextUrl = ApiClient.getStreamUrl(next);
+            ExoPlayerCache.precache(PlayerActivity.this, nextUrl);
+        };
+        handler.postDelayed(deferredNextEpisodePrecache, 450L);
+    }
+
+    /** 广告起播后延后拉待播正片，减轻与贴片缓冲并发（同一 SimpleCache + 单线程 precache）。 */
+    private void scheduleMainPrecacheForPendingEpisodeDuringAd() {
+        cancelDeferredMainPrecacheDuringAd();
+        if (pendingEpisodeIndex < 0 || episodes == null
+                || pendingEpisodeIndex >= episodes.size()) {
+            return;
+        }
+        final String pendingUrl = ApiClient.getStreamUrl(episodes.get(pendingEpisodeIndex));
+        deferredMainPrecacheWhileAd = () -> {
+            deferredMainPrecacheWhileAd = null;
+            if (isFinishing() || !isPlayingAd) return;
+            ExoPlayerCache.precache(PlayerActivity.this, pendingUrl);
+        };
+        handler.postDelayed(deferredMainPrecacheWhileAd, 2800L);
+    }
+
+    private void cancelDeferredMainPrecacheDuringAd() {
+        if (deferredMainPrecacheWhileAd != null) {
+            handler.removeCallbacks(deferredMainPrecacheWhileAd);
+            deferredMainPrecacheWhileAd = null;
+        }
     }
 
     private void recordWatchHistory(long episodeId) {
@@ -1407,8 +1447,7 @@ public class PlayerActivity extends AppCompatActivity {
         updateAdCountdown(showSec);
 
         if (pendingEpisodeIndex >= 0 && episodes != null && pendingEpisodeIndex < episodes.size()) {
-            String pendingUrl = ApiClient.getStreamUrl(episodes.get(pendingEpisodeIndex));
-            ExoPlayerCache.precache(this, pendingUrl);
+            scheduleMainPrecacheForPendingEpisodeDuringAd();
         }
 
         if (player != null) {
@@ -1439,8 +1478,7 @@ public class PlayerActivity extends AppCompatActivity {
         updateAdCountdown(Math.max(0, durationSec));
 
         if (pendingEpisodeIndex >= 0 && episodes != null && pendingEpisodeIndex < episodes.size()) {
-            String pendingUrl = ApiClient.getStreamUrl(episodes.get(pendingEpisodeIndex));
-            ExoPlayerCache.precache(this, pendingUrl);
+            scheduleMainPrecacheForPendingEpisodeDuringAd();
         }
 
         player.setMediaItem(MediaItem.fromUri(Uri.parse(fullUrl)));
@@ -1498,6 +1536,7 @@ public class PlayerActivity extends AppCompatActivity {
                     btnCloseAd.setVisibility(View.GONE);
                     clearAdImageOverlay();
                     pendingEpisodeIndex = -1;
+                    cancelDeferredMainPrecacheDuringAd();
                     ExoPlayerCache.cancelPrecache();
                     if (player != null) player.stop();
                 },
@@ -1506,6 +1545,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void onAdFinished() {
+        cancelDeferredMainPrecacheDuringAd();
         cancelAdCountdown();
         isPlayingAd = false;
         adIsImage = false;

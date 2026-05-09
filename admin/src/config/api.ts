@@ -10,6 +10,7 @@ export const adminApiBase = origin ? `${origin}/api/v1/admin` : '/api/v1/admin'
 
 export const adminUploadImageUrl = `${adminApiBase}/upload/image`
 export const adminUploadVideoUrl = `${adminApiBase}/upload/video`
+export const adminUploadAppReleaseUrl = `${adminApiBase}/upload/app-release`
 
 /**
  * 后台存的是相对路径（如 /uploads/images/xxx.jpg），线上管理端与 API 不同域时必须拼成 API 公网地址才能回显。

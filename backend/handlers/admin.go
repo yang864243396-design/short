@@ -761,7 +761,8 @@ func UploadVideo(c *gin.Context) {
 	}
 	defer file.Close()
 
-	uploadDir := "./uploads/videos"
+	dateDir := time.Now().Format("20060102")
+	uploadDir := filepath.Join("./uploads/videos", dateDir)
 	os.MkdirAll(uploadDir, os.ModePerm)
 
 	filename := fmt.Sprintf("%d_%s", time.Now().UnixMilli(), header.Filename)
@@ -801,7 +802,8 @@ func UploadImage(c *gin.Context) {
 		return
 	}
 
-	uploadDir := "./uploads/images"
+	dateDir := time.Now().Format("20060102")
+	uploadDir := filepath.Join("./uploads/images", dateDir)
 	os.MkdirAll(uploadDir, os.ModePerm)
 
 	var outData []byte
@@ -825,7 +827,7 @@ func UploadImage(c *gin.Context) {
 	}
 
 	utils.Success(c, gin.H{
-		"url":      "/uploads/images/" + filename,
+		"url":      "/uploads/images/" + dateDir + "/" + filename,
 		"filename": filename,
 		"size":     int64(len(outData)),
 	})

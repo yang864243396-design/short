@@ -40,7 +40,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   DataAnalysis, Film, Menu, User, UserFilled,
-  ChatDotSquare, Picture, Setting, VideoCamera, Wallet, ShoppingCart, Timer
+  ChatDotSquare, Picture, Setting, VideoCamera, Wallet, ShoppingCart, Timer, Iphone
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -58,6 +58,7 @@ const menuItems = [
   { path: '/banners', perm: 'banners', label: '轮播广告', icon: Picture },
   { path: '/ads', perm: 'ads', label: '解锁广告', icon: VideoCamera },
   { path: '/ad-skip-config', perm: 'ads', label: '广告跳过卡', icon: Timer },
+  { path: '/app-release-packages', perm: 'app-release-packages', label: '客户端版本管理', icon: Iphone },
   { path: '/roles', perm: 'roles', label: '角色管理', icon: Setting },
 ]
 

@@ -33,6 +33,7 @@ const router = createRouter({
         { path: 'banners', name: 'Banners', component: () => import('@/views/BannerView.vue'), meta: { title: '轮播广告', perm: 'banners' } },
         { path: 'ads', name: 'Ads', component: () => import('@/views/AdView.vue'), meta: { title: '解锁广告', perm: 'ads' } },
         { path: 'ad-skip-config', name: 'AdSkipConfig', component: () => import('@/views/AdSkipConfigView.vue'), meta: { title: '广告跳过卡', perm: 'ads' } },
+        { path: 'app-release-packages', name: 'AppReleasePackages', component: () => import('@/views/AppReleasePackageView.vue'), meta: { title: '客户端版本管理', perm: 'app-release-packages' } },
       ]
     }
   ]

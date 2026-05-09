@@ -84,3 +84,17 @@ export const uploadVideo = (formData: FormData) =>
 
 export const uploadImage = (formData: FormData) =>
   request.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+
+export const getAppReleasePackages = (params: { page?: number; page_size?: number }) =>
+  request.get('/app-release-packages', { params })
+
+export const createAppReleasePackage = (data: Record<string, unknown>) =>
+  request.post('/app-release-packages', data)
+
+export const updateAppReleasePackage = (id: number, data: Record<string, unknown>) =>
+  request.put(`/app-release-packages/${id}`, data)
+
+export const setAppReleasePackageEnabled = (id: number, data: { enabled: boolean }) =>
+  request.put(`/app-release-packages/${id}/enabled`, data)
+
+export const deleteAppReleasePackage = (id: number) => request.delete(`/app-release-packages/${id}`)
